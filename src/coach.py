@@ -27,7 +27,7 @@ from . import PanConfigManager
 
 
 
-class PanCoach:
+class Coach:
 
     ######################################################################################
     ##
@@ -42,7 +42,7 @@ class PanCoach:
         DVC_TRAINED_MODELS_PATH = None,
         QUERY_CACHE_PATH        = None,
         DVC_QUERY_CACHE_PATH    = None,
-        PANMODELS_DB_TABLE_PREFIX  = '',
+        MODELS_DB_TABLE_PREFIX  = '',
         UNITS_DB_URL            = None,
         PROJECT_HOME            = '.',
     )
@@ -50,7 +50,7 @@ class PanCoach:
 
     databases=dict(
         robson=dict(
-            env="PANMODELS_DB_URL",
+            env="MODELS_DB_URL",
         ),
         datalake_athena=dict(
             env="DATALAKE_ATHENA_URL",
