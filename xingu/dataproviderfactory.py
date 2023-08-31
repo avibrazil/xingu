@@ -7,6 +7,7 @@ import inspect
 import logging
 
 from . import DataProvider
+from . import ConfigManager
 from . import dataproviders as dp
 
 
@@ -15,20 +16,17 @@ from . import dataproviders as dp
 
 class DataProviderFactory:
 
-    config_file_stanza='DEFAULT'
-
-    def __init__(self, config_file: str=None, providers_folder: str=None, providers_list: list=None):
+    def __init__(self, providers_folder: str=None, providers_list: list=None):
         # 1. Check if providers_folder is valid
         # 2. Load all DPs whose IDs are in providers_list. Load all if None
         # 3. If no providers_folder passed, search for config_file
         # 4. Look for providers_folder in config file
         # 5. Look for providers_list in config file
-        # 6. Check for providers in robson.dataproviders
+        # 6. Check for providers in xingu.dataproviders
 
 
         # Setup logging
         self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-
 
 
         # Initialize parameters to something useless and fill them up along the way
@@ -38,48 +36,32 @@ class DataProviderFactory:
         self.dps                = {}
 
 
-        # Read a config file if we have some
-        if config_file:
-            config = configparser.ConfigParser()
-            self.config=config.read(config_file)
-
-
-        # Get operating parameters from config file first
-        if self.config and len(self.config)>0:
-            stanza=self.config_file_stanza
-
-            # We do have a config file. Check if we have something there.
-            if stanza in self.config:
-                if 'providers_folder' in self.config[stanza]:
-                    self.providers_folder=self.config[stanza]['providers_folder']
-
-                if 'providers_list' in self.config[stanza]:
-                    # Convert comma separated text into a true tidy list
-                    self.providers_list=self.config[stanza]['providers_list'].split(',')
-                    self.providers_list=[x.strip() for x in self.providers_list.split(',')]
-
-
-
         # Now overwrite whatever came from config file with what was passed to __init__
         if providers_folder is not None:
-            self.providers_folder=providers_folder
-
+            self.providers_folder = providers_folder
+        else:
+            self.providers_folder = ConfigManager.get('DATAPROVIDER_FOLDER', default=None)
 
         if providers_list is not None:
-            if isinstance(providers_list, list):
-                # Remove useless elements
-                self.providers_list=list(filter(None,providers_list))
-                if len(self.providers_list)<1: self.providers_list=None
-            else:
-                self.providers_list=[i.strip() for i in providers_list.split(',')]
+            self.providers_list = providers_list
+        else:
+            self.providers_list = ConfigManager.get('DATAPROVIDER_LIST', default=None)
+
+        if isinstance(self.providers_list, list):
+            # Remove useless elements
+            self.providers_list = list(filter(None, self.providers_list))
+            if (len(self.providers_list) < 1):
+                self.providers_list = None
+        elif self.providers_list is not None:
+            self.providers_list = [i.strip() for i in self.providers_list.split(',')]
 
 
-        # If we still don't have a path to work with, use bundled robson.dataproviders
-        # module (imported as dp)
+        # If we still don't have a path to work with, use bundled
+        # xingu.dataproviders module (imported as dp)
         if self.providers_folder is None:
-            self.logger.info("Folder to search DataProviders: {}".format(str(pathlib.Path(dp.__file__).parent)))
-            self.providers_folder=str(pathlib.Path(dp.__file__).parent)
+            self.providers_folder = str(pathlib.Path(dp.__file__).parent)
 
+        self.logger.info("Folder to search DataProviders: {}".format(self.providers_folder))
 
         # We are now configured as much as we could.
 
@@ -88,7 +70,7 @@ class DataProviderFactory:
         sys.path.insert(1, self.providers_folder)
 
 
-        # Load and store classes which IDs are on self.providers_list
+        # Load and store classes which IDs on self.providers_list
         for modinfo in pkgutil.iter_modules([self.providers_folder]):
             # Import the python file as a module
             mod=importlib.import_module(modinfo.name)
@@ -156,6 +138,7 @@ class DataProviderFactory:
                     sub_pre_req=sub_pre_req | self.get_pre_req(p)
 
         return pre_req | sub_pre_req
+
 
 
     def __repr__(self):

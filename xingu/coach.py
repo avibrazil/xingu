@@ -8,26 +8,34 @@ import logging
 import socket
 import pathlib
 import pandas
-import pygit2
-import pwd
 import queue
 import random
 import randomname
 import sqlalchemy
 import os
+
+
+
+try:
+    import pygit2
+except:
+    pass
+
+
+
 import yaml
 # import sqlalchemy.pool
 from sqlalchemy import (Column, Integer, String, Float, DateTime, Table,
     MetaData, Index, ForeignKeyConstraint, UniqueConstraint)  # , JSON, ARRAY
 from . import DataProvider
 from . import DataProviderFactory
-from . import panestimator
-from . import NGBClassic
-from . import PanConfigManager
+from . import Estimator
+# from . import NGBClassic
+from . import ConfigManager
 
 
 
-class PanCoach:
+class Coach:
 
     ######################################################################################
     ##
@@ -42,15 +50,15 @@ class PanCoach:
         DVC_TRAINED_MODELS_PATH = None,
         QUERY_CACHE_PATH        = None,
         DVC_QUERY_CACHE_PATH    = None,
-        PANMODELS_DB_TABLE_PREFIX  = '',
-        UNITS_DB_URL            = None,
+        XINGU_DB_TABLE_PREFIX  = '',
+        DATA_DB_URL             = None,
         PROJECT_HOME            = '.',
     )
 
 
     databases=dict(
-        robson=dict(
-            env="PANMODELS_DB_URL",
+        xingu=dict(
+            env="XINGU_DB_URL",
         ),
         datalake_athena=dict(
             env="DATALAKE_ATHENA_URL",
@@ -59,7 +67,7 @@ class PanCoach:
             env="DATALAKE_DATABRICKS_URL",
         ),
     )
-    
+
 
     def __init__(self, dp_factory: DataProviderFactory = DataProviderFactory()):
         # Setup logging
@@ -67,7 +75,7 @@ class PanCoach:
 
         # Turn attribute `databases` into a private copy
         self.databases=copy.deepcopy(self.databases)
-        
+
         try:
             self.git_repo=pygit2.Repository(self.get_config('PROJECT_HOME'))
             self.logger.debug("Using git repo on {}".format(self.git_repo))
@@ -77,13 +85,12 @@ class PanCoach:
         self.dp_factory=dp_factory
 
         # Load our map of DataProvider IDs and their current train_ids
-        self.load_currents_file()
-        
+        self.load_inventory()
+
         # Database initialization block
         self.tables={}
-        self.panmodels_db=None
-        self.credit_db=None
-        self.get_db_connection('panmodels')
+        self.xingu_db=None
+        self.get_db_connection('xingu')
 #         self.get_units_db()
         self.init_db()
 
@@ -92,7 +99,7 @@ class PanCoach:
 
 
 
-    def get_config(self, config_item: str, default=PanConfigManager.undefined, cast=PanConfigManager.undefined):
+    def get_config(self, config_item: str, default=ConfigManager.undefined, cast=ConfigManager.undefined):
 #         if 'ROBSON_DB' == config_item:
 #             return self.get_robson_db()
 
@@ -100,13 +107,13 @@ class PanCoach:
 #             return self.get_units_db()
 
 #         else:
-        if default==PanConfigManager.undefined:
+        if default==ConfigManager.undefined:
             if config_item in self.defaults:
-                return PanConfigManager.get(config_item, default=self.defaults[config_item], cast=cast)
+                return ConfigManager.get(config_item, default=self.defaults[config_item], cast=cast)
             else:
-                return PanConfigManager.get(config_item, cast=cast)
+                return ConfigManager.get(config_item, cast=cast)
         else:
-            return PanConfigManager.get(config_item, default=default, cast=cast)
+            return ConfigManager.get(config_item, default=default, cast=cast)
 
 
 
@@ -118,18 +125,18 @@ class PanCoach:
     ##
     ## team_train():
     ##   - team_train_parallel() (background, parallelism controled by PARALLEL_TRAIN_MAX_WORKERS):
-    ##     - team_load() (for pre-req estimators not trained in this session)
+    ##     - team_load() (for pre-req models not trained in this session)
     ##     - Per DataProvider requested to be trained:
     ##       - team_train_member() (background):
-    ##         - Robson.fit()
+    ##         - Model.fit()
     ##   - post_train_parallel() (background, only if POST_PROCESS=true):
     ##     - Per trained estimator (parallelism controled by PARALLEL_POST_PROCESS_MAX_WORKERS):
-    ##       - Robson.save() (background)
-    ##       - Robson.save_train_sets() (background)
+    ##       - Model.save() (background)
+    ##       - Model.trainsets_save() (background)
     ##       - single_batch_predict() (background, only if bacth_predict=True):
-    ##         - Robson.compute_and_save_metrics()
-    ##         - Robson.save_batch_predict_valuations()
-    ##   - update_currents_file()
+    ##         - Model.compute_and_save_metrics()
+    ##         - Model.save_batch_predict_estimations()
+    ##   - update_inventory()
     ##
     ##
     ##
@@ -138,10 +145,10 @@ class PanCoach:
     ##
     ## team_batch_predict():
     ##   - team_load() (for all requested DPs)
-    ##   - Per loaded estimator:
+    ##   - Per loaded model:
     ##     - single_batch_predict() (background):
-    ##       - Robson.compute_and_save_metrics()
-    ##       - Robson.save_batch_predict_valuations()
+    ##       - Model.compute_and_save_metrics()
+    ##       - Model.save_batch_predict_estimations()
     ##
     ##
     ######################################################################################
@@ -161,13 +168,12 @@ class PanCoach:
         Train a single Robson for DataProvider dp and add it to inventory
         """
         # Imported here to avoid circular dependency problems
-        from robson import Robson
+        from xingu import Model
 
         # Actual model training
-        model=Robson(
+        model=Model(
             dp                   = dp,
             coach                = self,
-            estimator_class      = NGBClassic,
             trained              = False,
             hyperopt_strategy    = self.get_config('HYPEROPT_STRATEGY')
         )
@@ -187,7 +193,7 @@ class PanCoach:
         self.trained={}
         self.trained_in_session=[]
 
-        self.logger.info('Training Robsons for the following DataProviders: ' + str(self.dp_factory.providers_list))
+        self.logger.info('Training Models for the following DataProviders: ' + str(self.dp_factory.providers_list))
 
 
         ##################################################################################
@@ -250,7 +256,7 @@ class PanCoach:
                             processing.append(executor.submit(self.team_train_member,dp))
                         else:
                             # Not ready for you yet. Go back to the queue.
-                            self.logger.info('Deferring train of «{}» until all pre-reqs are ready'.format(dp.id))
+                            self.logger.info('Deferring train of «{}» until all its pre-reqs are ready'.format(dp.id))
                             waiting.append(dp)
                     else:
                         # Model has no dependencies, so just train it
@@ -287,7 +293,7 @@ class PanCoach:
     def declare_trained(self, model, post_process=True):
         # Add to inventory of trained models
         self.trained[model.dp.id]=model
-        
+
         # Add to inventory of models trained in this train session
         if hasattr(self,'trained_in_session'):
             self.trained_in_session.append(model.dp.id)
@@ -299,10 +305,10 @@ class PanCoach:
 
 
 
-    def team_train(self, batch_predict=True):
+    def team_train(self):
         """
         Train and post-process Robsons for all DPs requested.
-        
+
         After an estimator is trained, it enters the post-process phase, which
         executes the following:
         1. Save PKL and commit to DVC
@@ -310,17 +316,17 @@ class PanCoach:
         3. Get data and execute Batch Predict
         4. Save estimations in valuations DB table
         5. Compute various metrics and save them to DB.
-        
+
         If POST_PROCESS env variable is set and is false, none of this will
         happen and this is usualy the behavior when we are only optimizing
         hyper-parameters.
-        
+
         If POST_PROCESS env variable is not set or is true, post-processing
         activities are executed.
-        
-        If batch_predict==False, steps from 3 and beyond are not executed.
-        
-        The batch_predict flag is ignored if POST_PROCESS is false.
+
+        If BATCH_PREDICT==False, steps from 3 and beyond are not executed.
+
+        The BATCH_PREDICT flag is ignored if POST_PROCESS is false.
         """
 
         self.post_processing=False
@@ -331,7 +337,7 @@ class PanCoach:
         with concurrent.futures.ThreadPoolExecutor(thread_name_prefix='team_train') as executor:
             # Only 2 tasks here:
             # - Trigger all trains in parallel, taking care of pre-reqs
-            # - As soon as trained Robons are ready, do their post processing
+            # - As soon as trained Models are ready, do their post processing
             tasks=[]
 
             # The parallel post-train task, including batch predict
@@ -343,7 +349,7 @@ class PanCoach:
                 self.post_processing=True
 
                 # Start post-processing
-                tasks.append(executor.submit(self.post_train_parallel, batch_predict))
+                tasks.append(executor.submit(self.post_train_parallel))
 
             # The parallel train task
             tasks.append(executor.submit(self.team_train_parallel))
@@ -375,12 +381,12 @@ class PanCoach:
             self.trained[model].cleanup()
             # If DVC is active, there will be things to commit
             self.trained[model].dvc_commit()
-        
-        self.update_currents_file()
+
+        self.update_inventory()
 
 
 
-    def post_train_parallel(self, batch_predict):
+    def post_train_parallel(self):
         """
         Listens to trained Robsons and fire post-process tasks such as saving model,
         saving data, batch predict, metrics computation etc.
@@ -390,9 +396,9 @@ class PanCoach:
         max_workers=self.get_config('PARALLEL_POST_PROCESS_MAX_WORKERS', default=0, cast=int)
         if max_workers == '' or max_workers == 0:
             max_workers=None
-            self.logger.info(f'Post-processing all possible Robsons in parallel')
+            self.logger.info(f'Post-processing all possible Models in parallel')
         else:
-            self.logger.info(f'Post-processing no more than {max_workers} Robsons in parallel')
+            self.logger.info(f'Post-processing no more than {max_workers} Models in parallel')
 
 
         with concurrent.futures.ThreadPoolExecutor(
@@ -401,7 +407,7 @@ class PanCoach:
                 ) as executor:
             tasks=[]
             while True:
-                # Block until a Robson object is trained and ready to be used for post processing
+                # Block until a Model object is trained and ready to be used for post processing
                 model=self.post_train_queue.get()
                 self.post_train_queue.task_done()
 
@@ -413,13 +419,13 @@ class PanCoach:
                     self.logger.info('All post-process tasks done. Shutting down queue.')
                     break
 
-                self.logger.info(f'A fresh Robson({model.dp.id}) is ready for post-processing')
+                self.logger.info(f'A fresh Model({model.dp.id}) is ready for post-processing')
 
 
-                # Now do all the amazing things we can do with a trained Robson.
-                # In parallel.
+                # Now do all the amazing things we can do with a trained
+                # Model. In parallel.
 
-                ## Save it to storage
+                ## Save pickle to storage
                 tasks.append(
                     executor.submit(
                         model.save,
@@ -430,16 +436,22 @@ class PanCoach:
                     )
                 )
 
-                # Save train/val/test sets in DB
-                tasks.append(executor.submit(model.save_train_sets))
+                # Save trainsets to DB
+                tasks.append(executor.submit(model.trainsets_save))
+
+                # Predict and compute metrics over train data
+                tasks.append(executor.submit(model.trainsets_predict))
 
                 # Batch predict and metrics computation
-                if batch_predict:
+                if self.get_config('BATCH_PREDICT', default=False, cast=bool):
                     tasks.append(executor.submit(self.single_batch_predict,model))
+                else:
+                    self.logger.info('Skipping batch predict activities.')
+
 
             for task in concurrent.futures.as_completed(tasks):
-                # Let finished tasks express themselves. This is where in-task
-                # exceptions are raised.
+                # Let finished tasks express themselves. This is where
+                # in-task exceptions are raised.
 
                 self.logger.debug('A post-process task is done.')
 
@@ -466,10 +478,10 @@ class PanCoach:
             tasks=[]
 
             # Task 1: compute and save metrics
-            tasks.append(executor.submit(model.compute_and_save_metrics))
+            tasks.append(executor.submit(model.compute_and_save_metrics,'batch'))
 
             # Task 2: save estimations
-            tasks.append(executor.submit(model.save_batch_predict_valuations))
+            tasks.append(executor.submit(model.save_batch_predict_estimations))
 
             for task in concurrent.futures.as_completed(tasks):
                 # Does nothing if thread succeeded. Raises the task's exception otherwise.
@@ -480,7 +492,7 @@ class PanCoach:
     def team_batch_predict(self):
         if not hasattr(self, 'trained'):
             self.team_load()
-            
+
         # Define how many parallel workers to execute
         max_workers=self.get_config('PARALLEL_POST_PROCESS_MAX_WORKERS', default=0, cast=int)
         if max_workers == '' or max_workers == 0:
@@ -505,20 +517,20 @@ class PanCoach:
 
 
 
-    def update_currents_file(self):
+    def update_inventory(self):
         if hasattr(self,'trained') and hasattr(self,'trained_in_session'):
             # Make any needed initialization
-            if 'history' not in self.currents:
-                self.currents['history']=[]
+            if 'history' not in self.inventory:
+                self.inventory['history']=[]
 
-            if 'estimators' not in self.currents:
-                self.currents['estimators']=dict()
-            
+            if 'models' not in self.inventory:
+                self.inventory['models']=dict()
+
             # Update file with what we have
-            self.currents['history'].append(
+            self.inventory['history'].append(
                 dict(
                     time              = datetime.datetime.now(datetime.timezone.utc),
-                    user_name         = pwd.getpwuid(os.getuid())[0],
+                    user_name         = os.environ.get('USER', os.environ.get('USERNAME')),
                     host_name         = socket.gethostname(),
                     git_branch        = self.git_repo.head.name if self.git_repo else None,
                     git_commit        = self.git_repo.head.target.hex if self.git_repo else None,
@@ -530,62 +542,62 @@ class PanCoach:
                     train_session_id  = self.train_session_id
                 )
             )
-            
+
             # Preserve just last 10 entries in history
-            self.currents['history']=self.currents['history'][-10:]
-            
+            self.inventory['history']=self.inventory['history'][-10:]
+
             for e in self.trained_in_session:
-                if e in self.currents['estimators']:
-                    del self.currents['estimators'][e]
-                self.currents['estimators'][e]=self.trained[e].signature()
-            
-            target=pathlib.Path(self.get_config('PROJECT_HOME')).resolve() / 'currents.yaml'
+                if e in self.inventory['models']:
+                    del self.inventory['models'][e]
+                self.inventory['models'][e]=self.trained[e].signature()
+
+            target=pathlib.Path(self.get_config('PROJECT_HOME')).resolve() / 'inventory.yaml'
             with open(target, 'w') as f:
                 yaml.dump(
-                    data=self.currents,
+                    data=self.inventory,
                     stream=f,
-                    
+
                     # YAML styling options
                     explicit_start=True,
                     canonical=False,
                     indent=6,
                     default_flow_style=False
                 )
-            
-            self.git_commit_currents_file()
-        
-        
-        
-    def load_currents_file(self) -> dict:
-        target=pathlib.Path(self.get_config('PROJECT_HOME')).resolve() / 'currents.yaml'
-        
+
+            self.git_commit_inventory()
+
+
+
+    def load_inventory(self) -> dict:
+        target=pathlib.Path(self.get_config('PROJECT_HOME')).resolve() / 'inventory.yaml'
+
         try:
             self.logger.debug("Trying to open {}".format(target))
             with open(target) as f:
-                self.currents=yaml.safe_load(f)
+                self.inventory=yaml.safe_load(f)
         except FileNotFoundError as e:
-            self.currents={}
-            
-        if self.currents is None:
-            self.currents={}
-        
-        return self.currents
+            self.inventory={}
 
-    
+        if self.inventory is None:
+            self.inventory={}
 
-    def git_commit_currents_file(self):
-        if self.get_config('COMMIT_CURRENTS', default=False, cast=bool):
+        return self.inventory
+
+
+
+    def git_commit_inventory(self):
+        if self.get_config('COMMIT_INVENTORY', default=False, cast=bool):
             git_shell = """
                 cd {path};
-                git add 'currents.yaml';
-                git commit -m 'chore(currents.yaml)';
+                git add 'inventory.yaml';
+                git commit -m 'chore(inventory.yaml)';
                 git push;
             """
 
             git_shell=git_shell.format(path=pathlib.Path(self.get_config('PROJECT_HOME')).resolve())
-            self.logger.debug(f'Commit currents.yaml to Git with command:\n{git_shell}')
+            self.logger.debug(f'Commit inventory.yaml to Git with command:\n{git_shell}')
             return_code=os.system(git_shell)
-            
+
             if return_code != 0:
                 raise OSError(return_code, f'Following external command failed: {git_shell}')
 
@@ -612,25 +624,25 @@ class PanCoach:
                     pre_trained_train_session_id:         str  = '*',
                     pre_trained_as_of:                    str  = '*',
                     pre_req_train_or_session_ids:         list = None,
-                    robson_module:                        str  = 'robson',
-                    robson_class:                         str  = 'Robson'
+                    xingu_module:                         str  = 'xingu',
+                    model_class:                          str  = 'Model'
         ):
         """
         Load pre-trained Robson estimators into RobsonCoach’s inventory.
-        
+
         PKLs will be searched in S3 or filesystem path defined in
         pre_trained_path.
-        
+
         explicit_list -- Load estimators only for this DataProviders. Load all
         if empty or None.
-        
+
         post_process -- If True, submit loaded estimator for post-processing
         (batch predict, metrics computation etc)
         """
-        robson_module = importlib.import_module(robson_module)
-        Robson = getattr(robson_module, robson_class)
+        xingu_module = importlib.import_module(xingu_module)
+        Model = getattr(xingu_module, model_class)
 
-        robson_params_template=dict(
+        model_params_template=dict(
             # Our optimization technique
             delayed_prereq_binding=               True,
 
@@ -667,25 +679,25 @@ class PanCoach:
             tasks=[]
 
             for dp in to_load:
-                robson_params=copy.deepcopy(robson_params_template)
-                robson_params['coach']=self
-                robson_params['dp']=self.dp_factory.dps[dp]() if isinstance(dp, str) else dp
+                model_params=copy.deepcopy(model_params_template)
+                model_params['coach']=self
+                model_params['dp']=self.dp_factory.dps[dp]() if isinstance(dp, str) else dp
 
                 if (
-                            'estimators' in self.currents and 
-                            dp in self.currents['estimators']
+                            'models' in self.inventory and
+                            dp in self.inventory['models']
                 ):
-                    robson_params['pre_trained_train_id']=self.currents['estimators'][dp]['train_id']
-                    robson_params['train_or_session_id_match_list']=None
+                    model_params['pre_trained_train_id']=self.inventory['models'][dp]['train_id']
+                    model_params['train_or_session_id_match_list']=None
 
                 self.logger.info(f'Trigger background loading of ‘{dp}’')
-                tasks.append(executor.submit(Robson, **robson_params))
+                tasks.append(executor.submit(Model, **model_params))
 
             for task in concurrent.futures.as_completed(tasks):
                 # Does nothing if thread succeeded. Raises the task's exception otherwise.
-                bob=task.result()
-                self.declare_trained(bob, post_process=post_process)
-                self.logger.info(f'Loaded {bob}')
+                mod=task.result()
+                self.declare_trained(mod, post_process=post_process)
+                self.logger.info(f'Loaded {mod}')
 
         # Now bind pre-req models with the ones already in the team.
         for model in self.trained:
@@ -701,7 +713,7 @@ class PanCoach:
 
 
     def report(self, train_ids: list=None, dataprovider_id: str=None, on: str='model',
-                    start: str=None, reference_train_id: str=None) -> pd.DataFrame:
+                    start: str=None, reference_train_id: str=None) -> pandas.DataFrame:
 
         # Method idealized but still unimplemented.
 
@@ -798,16 +810,16 @@ class PanCoach:
         # Now execute query
         report={}
         self.logger.debug(
-            'Estimator metadata retrieval query: ' + 
+            'Estimator metadata retrieval query: ' +
             query_meta.compile(compile_kwargs={'literal_binds': True}).string
         )
         self.logger.debug(
-            'Metric retrieval query: ' + 
+            'Metric retrieval query: ' +
             query_metrics.compile(compile_kwargs={'literal_binds': True}).string
         )
         report['meta']    = pd.read_sql(query_meta,    con=query_meta.bind)
         report['metrics'] = pd.read_sql(query_metrics, con=query_metrics.bind)
-        
+
         # Handle time
         report['meta']['time_utc']=pd.to_datetime(report['meta']['time'], unit='s', utc=True)
         report['meta']=report['meta'].set_index('train_id').drop(columns=['time']).T
@@ -848,10 +860,10 @@ class PanCoach:
     ######################################################################################
 
 
-    def get_db_connection(self, nickname='robson'):
+    def get_db_connection(self, nickname='xingu'):
         if nickname not in self.databases:
-            raise NotImplementedError(f'RobsonCoach knows nothing about a datasource with nickname «{nickname}»')
-        
+            raise NotImplementedError(f'Coach knows nothing about a datasource with nickname «{nickname}»')
+
         import pyathena.pandas.cursor
 
         engine_config_sets=dict(
@@ -875,7 +887,7 @@ class PanCoach:
                 # the DEFAULT configuration to make the pool work with only
                 # 1 simultaneous connection. Since Robson is agressively
                 # parallel and requires a DB service that can be used in
-                # parallel (regular DBs), the simplicity and portability 
+                # parallel (regular DBs), the simplicity and portability
                 # offered by SQLite for a light developer laptop has its
                 # tradeoffs and we’ll have to tweak it to make it usable in
                 # a parallel environment even if SQLite is not parallel.
@@ -891,7 +903,7 @@ class PanCoach:
                 # wait before giving up on getting a connection from the
                 # pool.
                 pool_timeout      = 3600.0,
-                
+
                 # Debug connection and all queries
                 # echo              = True
             ),
@@ -901,28 +913,28 @@ class PanCoach:
                 )
             )
         )
-        
+
         if 'conn' not in self.databases[nickname]:
             # Connection to this database not open yet. Just do it.
-            
+
             url = self.get_config(self.databases[nickname]['env'])
-        
+
             engine_config=engine_config_sets['DEFAULT'].copy()
-            
+
             for dbtype in engine_config_sets.keys():
                 # Extract from engine_config_sets configuration specific for each DB type
                 if dbtype in url:
                     engine_config.update(engine_config_sets[dbtype])
-            
+
             # Databricks needs special URL handling
             # URLs are like "databricks+connector://host.com/default?http_path=/sql/..."
             if 'databricks' in url:
                 tokenized=urllib.parse.urlparse(url)
-                
+
                 # Extract connection args as "?http_path=..." into a dict
                 # Returns {'http_path': ['value']}
                 conn_args=urllib.parse.parse_qs(tokenized.query)
-                
+
                 # Unwrap the value from the list
                 # Return  {'http_path': 'value'}
                 engine_config.update(
@@ -930,37 +942,38 @@ class PanCoach:
                         connect_args={k:conn_args[k][0] for k in conn_args}
                     )
                 )
-                
+
                 # Reconstruct the URL without the connection args
                 tokenized=tokenized._replace(query=None)
                 url=urllib.parse.urlunparse(tokenized)
-    
+
             self.databases[nickname]['conn']=sqlalchemy.create_engine(
                 url = url,
                 **engine_config
             )
             self.logger.debug(f"Data source «{nickname}» is {self.databases[nickname]['conn']}")
-        
+
         return self.databases[nickname]['conn']
 
 
 
     def init_db(self):
-        if self.get_config('ROBSON_DB_URL'):
+        if self.get_config('XINGU_DB_URL'):
             # This is just to raise an exception if not set.
             # Can't do coach business without a DB.
             pass
 
 
-        self.logger.info('Going to create tables on Robson DB')
+        self.logger.info('Going to create tables on Xingu DB')
 
-        self.robson_db_metadata = sqlalchemy.MetaData(bind=self.get_db_connection('robson'))
+        self.xingu_db_metadata = sqlalchemy.MetaData(bind=self.get_db_connection('xingu'))
 
-        self.robson_db_table_prefix=self.get_config('ROBSON_DB_TABLE_PREFIX')
+        self.xingu_db_table_prefix=self.get_config('XINGU_DB_TABLE_PREFIX')
 
-        self.tables['training'] = Table(
-            self.robson_db_table_prefix + 'training',
-            self.robson_db_metadata,
+        table_name='training'
+        self.tables[table_name] = Table(
+            self.xingu_db_table_prefix + table_name,
+            self.xingu_db_metadata,
             Column(
                 'train_session_id', String,
                 primary_key=True,
@@ -976,16 +989,16 @@ class PanCoach:
                 primary_key=True,
                 nullable=False
             ),
-            Column('user_name', String),
-            Column('host_name', String),
-            Column('git_branch', String),
-            Column('git_commit', String),
-            Column('github_actor', String),      # GITHUB_ACTOR
-            Column('github_workflow', String),   # GITHUB_WORKFLOW
-            Column('github_run_id', String),     # GITHUB_RUN_ID
-            Column('github_run_number', String), # GITHUB_RUN_NUMBER
-            Column('x_features', String),
-            Column('dataprovider_ver', String),
+#             Column('user_name', String),
+#             Column('host_name', String),
+#             Column('git_branch', String),
+#             Column('git_commit', String),
+#             Column('github_actor', String),      # GITHUB_ACTOR
+#             Column('github_workflow', String),   # GITHUB_WORKFLOW
+#             Column('github_run_id', String),     # GITHUB_RUN_ID
+#             Column('github_run_number', String), # GITHUB_RUN_NUMBER
+#             Column('x_features', String),
+#             Column('dataprovider_ver', String),
 
             UniqueConstraint(
                 'train_session_id',
@@ -995,10 +1008,49 @@ class PanCoach:
             )
         )
 
+        table_name='training_attributes'
+        self.tables[table_name] = Table(
+            self.xingu_db_table_prefix + table_name,
+            self.xingu_db_metadata,
+            Column(
+                'train_session_id', String,
+                primary_key=True,
+                nullable=False
+            ),
+            Column(
+                'train_id', String,
+                primary_key=True,
+                nullable=False
+            ),
+            Column(
+                'dataprovider_id', sqlalchemy.String,
+                primary_key=True,
+                nullable=False
+            ),
+            Column(
+                'attribute',
+                String,
+                primary_key=True,
+                nullable=False
+            ),
+            Column(
+                'value',
+                String
+            ),
 
-        self.tables['training_status'] = Table(
-            self.robson_db_table_prefix + 'training_status',
-            self.robson_db_metadata,
+            UniqueConstraint(
+                'train_session_id',
+                'train_id',
+                'dataprovider_id',
+                'attribute',
+                name='train'
+            )
+        )
+
+        table_name='training_steps'
+        self.tables[table_name] = Table(
+            self.xingu_db_table_prefix + table_name,
+            self.xingu_db_metadata,
             Column(
                 'time',
                 Integer,
@@ -1025,8 +1077,6 @@ class PanCoach:
                 String,
                 primary_key=True
             ),
-            Column('estimator', String),
-            Column('hyperparam', String),
 
             ForeignKeyConstraint(
                 [
@@ -1035,23 +1085,23 @@ class PanCoach:
                     'train_id'
                 ],
                 [
-                    self.robson_db_table_prefix + 'training.dataprovider_id',
-                    self.robson_db_table_prefix + 'training.train_session_id',
-                    self.robson_db_table_prefix + 'training.train_id',
+                    self.xingu_db_table_prefix + 'training.dataprovider_id',
+                    self.xingu_db_table_prefix + 'training.train_session_id',
+                    self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
 
-            Index(self.robson_db_table_prefix + 'training_status_' + 'by_time', 'time'),
-            Index(self.robson_db_table_prefix + 'training_status_' + 'by_dataprovider_id', 'dataprovider_id'),
-            Index(self.robson_db_table_prefix + 'training_status_' + 'by_train_session_id', 'train_session_id'),
-            Index(self.robson_db_table_prefix + 'training_status_' + 'by_train_id', 'train_id'),
-            Index(self.robson_db_table_prefix + 'training_status_' + 'by_status', 'status'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_status', 'status'),
         )
 
-
-        self.tables['sets'] = Table(
-            self.robson_db_table_prefix + 'sets',
-            self.robson_db_metadata,
+        table_name='sets'
+        self.tables[table_name] = Table(
+            self.xingu_db_table_prefix + table_name,
+            self.xingu_db_metadata,
             Column(
                 'dataprovider_id', String,
 #                 primary_key=True,
@@ -1072,11 +1122,11 @@ class PanCoach:
                 nullable=False
             ),
             Column(
-                'unit_id', String,
+                'index', String,
 #                 primary_key=True,
                 nullable=False
             ),
-            Column('target', Float,),
+            Column('target', Float),
 
             ForeignKeyConstraint(
                 [
@@ -1085,21 +1135,21 @@ class PanCoach:
                     'train_id'
                 ],
                 [
-                    self.robson_db_table_prefix + 'training.dataprovider_id',
-                    self.robson_db_table_prefix + 'training.train_session_id',
-                    self.robson_db_table_prefix + 'training.train_id',
+                    self.xingu_db_table_prefix + 'training.dataprovider_id',
+                    self.xingu_db_table_prefix + 'training.train_session_id',
+                    self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
 
-            Index(self.robson_db_table_prefix + 'sets_' + 'by_dataprovider_id', 'dataprovider_id'),
-            Index(self.robson_db_table_prefix + 'sets_' + 'by_train_session_id', 'train_session_id'),
-            Index(self.robson_db_table_prefix + 'sets_' + 'by_train_id', 'train_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
 
-
-        self.tables['metrics_model'] = Table(
-            self.robson_db_table_prefix + 'metrics_model',
-            self.robson_db_metadata,
+        table_name='metrics_model'
+        self.tables[table_name] = Table(
+            self.xingu_db_table_prefix + table_name,
+            self.xingu_db_metadata,
             Column(
                 'time',
                 Integer,
@@ -1141,22 +1191,22 @@ class PanCoach:
                     'train_id'
                 ],
                 [
-                    self.robson_db_table_prefix + 'training.dataprovider_id',
-                    self.robson_db_table_prefix + 'training.train_session_id',
-                    self.robson_db_table_prefix + 'training.train_id',
+                    self.xingu_db_table_prefix + 'training.dataprovider_id',
+                    self.xingu_db_table_prefix + 'training.train_session_id',
+                    self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
 
-            Index(self.robson_db_table_prefix + 'metrics_model_' + 'by_time', 'time'),
-            Index(self.robson_db_table_prefix + 'metrics_model_' + 'by_dataprovider_id', 'dataprovider_id'),
-            Index(self.robson_db_table_prefix + 'metrics_model_' + 'by_train_session_id', 'train_session_id'),
-            Index(self.robson_db_table_prefix + 'metrics_model_' + 'by_train_id', 'train_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
 
-
-        self.tables['metrics_valuation'] = Table(
-            self.robson_db_table_prefix + 'metrics_valuation',
-            self.robson_db_metadata,
+        table_name='metrics_estimation'
+        self.tables[table_name] = Table(
+            self.xingu_db_table_prefix + table_name,
+            self.xingu_db_metadata,
             Column(
                 'time',
                 Integer,
@@ -1179,7 +1229,7 @@ class PanCoach:
                 nullable=False
             ),
             Column(
-                'unit_id', String,
+                'index', String,
                 primary_key=True,
                 nullable=False
             ),
@@ -1198,22 +1248,22 @@ class PanCoach:
                     'train_id'
                 ],
                 [
-                    self.robson_db_table_prefix + 'training.dataprovider_id',
-                    self.robson_db_table_prefix + 'training.train_session_id',
-                    self.robson_db_table_prefix + 'training.train_id',
+                    self.xingu_db_table_prefix + 'training.dataprovider_id',
+                    self.xingu_db_table_prefix + 'training.train_session_id',
+                    self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
 
-            Index(self.robson_db_table_prefix + 'metrics_valuation_' + 'by_time', 'time'),
-            Index(self.robson_db_table_prefix + 'metrics_valuation_' + 'by_dataprovider_id', 'dataprovider_id'),
-            Index(self.robson_db_table_prefix + 'metrics_valuation_' + 'by_train_session_id', 'train_session_id'),
-            Index(self.robson_db_table_prefix + 'metrics_valuation_' + 'by_train_id', 'train_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
 
-
-        self.tables['valuations'] = Table(
-            self.robson_db_table_prefix + 'valuations',
-            self.robson_db_metadata,
+        table_name='estimations'
+        self.tables[table_name] = Table(
+            self.xingu_db_table_prefix + table_name,
+            self.xingu_db_metadata,
             Column(
                 'time',
                 Integer,
@@ -1236,22 +1286,11 @@ class PanCoach:
                 nullable=False
             ),
             Column(
-                'unit_id', String,
+                'index', String,
                 primary_key=True,
                 nullable=False
             ),
-            Column('sigma', Float),
-            Column('p_05', Float),
-            Column('p_10', Float),
-            Column('p_20', Float),
-            Column('p_30', Float),
-            Column('p_40', Float),
-            Column('p_50', Float),
-            Column('p_60', Float),
-            Column('p_70', Float),
-            Column('p_80', Float),
-            Column('p_90', Float),
-            Column('p_95', Float),
+            Column('estimation', Float),
 
             ForeignKeyConstraint(
                 [
@@ -1260,16 +1299,16 @@ class PanCoach:
                     'train_id'
                 ],
                 [
-                    self.robson_db_table_prefix + 'training.dataprovider_id',
-                    self.robson_db_table_prefix + 'training.train_session_id',
-                    self.robson_db_table_prefix + 'training.train_id',
+                    self.xingu_db_table_prefix + 'training.dataprovider_id',
+                    self.xingu_db_table_prefix + 'training.train_session_id',
+                    self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
 
-            Index(self.robson_db_table_prefix + 'valuations_' + 'by_time', 'time'),
-            Index(self.robson_db_table_prefix + 'valuations_' + 'by_dataprovider_id', 'dataprovider_id'),
-            Index(self.robson_db_table_prefix + 'valuations_' + 'by_train_session_id', 'train_session_id'),
-            Index(self.robson_db_table_prefix + 'valuations_' + 'by_train_id', 'train_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
 
-        self.robson_db_metadata.create_all()
+        self.xingu_db_metadata.create_all()

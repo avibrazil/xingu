@@ -25,10 +25,7 @@ LABEL com.amazonaws.sagemaker.capabilities.accept-bind-to-port=true
 #
 # See: https://vsupalov.com/docker-arg-env-variable-guide/#arg-and-env-availability
 
-ARG USER
-ARG DD_AGENT_MAJOR_VERSION
-ARG DD_API_KEY
-ARG DD_INSTALL_ONLY
+ARG USER=xingu
 
 
 # Include path where pip and poetry install executables
@@ -46,15 +43,20 @@ USER root
 # Install some OS tools for practical purposes
 RUN    dnf update -y \
     && dnf install -y findutils curl rsync sqlite git openblas-devel \
-        python3.9 postgresql-private-devel postgresql-server-devel
+        python3-pip python3-wheel poetry python3-fsspec \
+        python3-numpy python \
+        python3-fiona python3-gdal python3-greenlet python3-frozenlist python3-grpcio \
+        python3-kiwisolver python3-lz4 python3-aiohttp python3-matplotlib \
+        python3-multidict python3-markupsafe python3-pygit2 python3-scikit-learn
 
 # - Set Python 3.9 as default
 # - Make Python 3.9 functional
 # - Create low level user and do everything else as non-root
-RUN    alternatives --install /usr/bin/python python /usr/bin/python3   1 \
-    && alternatives --install /usr/bin/python python /usr/bin/python3.9 2 \
-    && alternatives --auto python \
-    && useradd -u 2000 -m $USER
+# RUN    alternatives --install /usr/bin/python python /usr/bin/python3   1 \
+#     && alternatives --install /usr/bin/python python /usr/bin/python3.9 2 \
+#     && alternatives --auto python \
+#     && useradd -u 2000 -m $USER
+RUN useradd -u 2000 -m $USER
 
 # Switch to a lower end user, which is the one that will run the application
 USER $USER
@@ -65,9 +67,10 @@ WORKDIR /home/$USER
 # Install app dependencies.
 # Disable poetry's virtualenvs: usefull in multi-project laptops, not production environments
 # Use plain pip to install required modules in user space, not root.
-COPY pyproject.toml ./
-RUN    python -m ensurepip \
-    && python -m pip install -U pip wheel poetry \
-    && python -m poetry config virtualenvs.create false \
-    && python -m poetry export -f requirements.txt --without-hashes --output requirements.txt \
-    && python -m pip install -r requirements.txt --user
+# COPY pyproject.toml ./
+# RUN    python -m ensurepip \
+#     && python -m pip install -U pip wheel poetry \
+#     && python -m poetry config virtualenvs.create false \
+#     && python -m poetry export -f requirements.txt --without-hashes --output requirements.txt \
+#     && python -m pip install -r requirements.txt --user
+RUN python -m pip list -v
