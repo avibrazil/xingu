@@ -2,7 +2,6 @@ import os
 import os.path
 import textwrap
 import inspect
-import pwd
 import socket
 import lzma
 import randomname
@@ -18,7 +17,8 @@ import pickle
 import yaml
 import sqlalchemy
 import numpy
-import pandas as pd
+import matplotlib
+import pandas
 import s3path
 import smart_open
 import urllib
@@ -26,7 +26,6 @@ import sklearn.metrics as sklm
 
 from . import DataProvider
 from . import Coach
-from . import Estimator
 from . import ConfigManager
 
 
@@ -35,6 +34,155 @@ from . import ConfigManager
 
 
 class Model(object):
+
+    def __init__(self,
+                    dp:                            DataProvider,
+                    coach:                         Coach = None,
+
+                    # Control pre-trained model loading:
+                    ## Load a pre-trained model
+                    trained:                              bool = False,
+
+                    ## Load only the Estimator object
+                    estimator_only:                       bool = False,
+                    pre_trained_path:                     str  = None,
+                    pre_trained_train_session_id:         str  = '*',
+                    pre_trained_train_id:                 str  = '*',
+                    pre_trained_as_of:                    str  = '*',
+                    train_or_session_id_match_list:       list = None,
+                    hyperopt_strategy:                    str  = 'last',
+
+                    delayed_prereq_binding:               bool = False
+                ):
+        """
+        Parameters:
+
+        - dp: A DataProvider object or an ID (str) of a DataProvider to load a
+        pre-trained Model for this DataProvider.
+
+        - coach: A Coach object. Needed if Model will be trained. Needed if Model
+        will do database operations. Not needed if loading a pre-trained Model.
+
+        - estimator_class: A Estimator-derived class name to be trained by Model.
+        Not required if loading a pre-trained Model.
+
+        - trained: Causes Model to load a pre-trained object or not. The default (False)
+        will give an untrained Model object.
+
+        - pre_trained_path: Local or S3 path to search for pre-trained objects and/or to
+        save them after training.
+
+        - estimator_only: False loads and returns an entire Model object
+        as it was pickled, complete with methods and pickled DataProvider
+        object. True, loads only the estimator object and some IDs,
+        DataProvider object and methods will not come from pickle. Use
+        with caution because loaded estimator might be incompatible with
+        current Model and DataProvider classes and their attributes.
+
+        - hyperopt_strategy: How to handle estimator hyper-parameters optimization:
+            - 'self' - cause it to optimize (a lengthy process).
+            - 'last' (default)  - cause it to search DB the latest compatible
+            hyper-parameters set, matching the DataProvider.
+            - train_id string - cause it to get from DB a specific train_id
+            hyper-parameters set.
+            - None - use Estimator object internal defaults
+
+        - delayed_prereq_binding: If DP specifies pre-req models, do not load them too.
+        Instead, a later call to self.load_pre_req_model() will be necessary.
+        """
+
+        # Setup logging
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
+        # Setup coach
+        self.coach=coach
+
+        # What type of context I'm in? Might be None, "train" or "batch_predict"
+        self.context=None
+
+        self.hyperopt_strategy=hyperopt_strategy
+        if hyperopt_strategy == 'last':
+            self.hyperopt_strategy=self.get_config('HYPEROPT_STRATEGY', default=hyperopt_strategy)
+        self.hyperparam=None
+
+        if trained:
+            # Requested a pre-trained Model. Lets try to load it
+
+            if isinstance(dp, str):
+                dp_id=dp
+            elif issubclass(dp.__class__, DataProvider):
+                dp_id=dp.id
+
+            bob=Model.load(
+                dp_id                           = dp_id,
+                path                            = pre_trained_path,
+                train_session_id                = pre_trained_train_session_id,
+                train_id                        = pre_trained_train_id,
+                train_or_session_id_match_list  = train_or_session_id_match_list,
+                as_of                           = pre_trained_as_of
+            )
+
+            # Transplant loaded object attributes into current object
+            if estimator_only:
+                # Use the DP in RAM, not from pickle
+                if issubclass(dp.__class__, DataProvider):
+                    self.dp        = dp
+                else:
+                    raise Exception("This type of Model loading requires a DataProvider object, not just a string. Use DataProviderFactory.get('model_name') to get it.")
+            else:
+                self.dp            = bob.dp
+
+            # Copy a managed list of attributes from loaded object
+            attributes=[
+                # Train info
+                'train_id',                 'train_session_id',    'estimator',
+                'trained',                  'hyperopt_strategy',   'hyperparam',
+                'train_queries_signatures',
+
+                # OS environment info
+                'user_name',      'host_name',
+
+                # Code info
+                'git_branch',     'git_commit',
+
+                # GitHub Actions info
+                'github_actor',   'github_workflow',
+                'github_run_id',  'github_run_number'
+            ]
+
+            for a in attributes:
+                if hasattr(bob,a):
+                    setattr(self,a,getattr(bob,a))
+
+            del bob
+        else:
+            # Requested an uninitalized/untrained object
+            self.dp                       = dp
+            self.trained                  = trained
+            self.train_id                 = None
+            self.train_session_id         = None
+            self.train_queries_signatures = dict()
+
+            # Store more contextual and informative metadata from the Coach and environment
+            self.user_name         = os.environ.get('USER', os.environ.get('USERNAME'))
+            self.host_name         = socket.gethostname()
+            self.git_branch        = self.coach.git_repo.head.name if self.coach.git_repo else None
+            self.git_commit        = self.coach.git_repo.head.target.hex if self.coach.git_repo else None
+            self.github_actor      = self.get_config('GITHUB_ACTOR', None)
+            self.github_workflow   = self.get_config('GITHUB_WORKFLOW', None)
+            self.github_run_id     = self.get_config('GITHUB_RUN_ID', None)
+            self.github_run_number = self.get_config('GITHUB_RUN_NUMBER', None)
+
+            self.log(message=str(self.dp.get_estimator_class()))
+
+            if self.dp.hollow:
+                self.estimator     = None
+            else:
+                self.estimator     = self.dp.get_estimator_class()(**self.dp.get_estimator_parameters())
+
+        if delayed_prereq_binding is False:
+            self.load_pre_req_model()
+
 
 
     ######################################################################################
@@ -45,7 +193,7 @@ class Model(object):
 
 
 
-    def optimize_hyperparam(self):
+    def hyperparam_optimize(self):
         """
         Decide wether to compute or use previously computed hyperparameters.
 
@@ -64,19 +212,24 @@ class Model(object):
         self.hyperparam=None
         dbresult=None
 
+        # Start handling hyperparameters
+        self.log_train_status('train_hyperhandle_start')
+
         if self.hyperopt_strategy == 'self':
             # Lengthy estimator hyper-parameter optimization
             self.log_train_status('train_hyperopt_start')
 
+            self.log(message='Hyperparameter optimization...')
+
             h=self.estimator.hyperparam_optimize(
-                train     = self.sets['train'],
-                val       = self.sets['val'],
-                features  = self.dp.get_features_list(),
-                target    = self.dp.get_target()
+                datasets     = self.sets,
+                features     = self.dp.get_estimator_features_list(),
+                target       = self.dp.get_target(),
+                search_space = self.dp.get_estimator_optimization_search_space()
             )
 
             self.hyperparam=dict(
-                source_train_id='self',
+                source_train_id=self.hyperopt_strategy,
                 hyperparam=h
             )
 
@@ -90,7 +243,7 @@ class Model(object):
 
             if hyperparam is not None:
                 self.hyperparam=dict(
-                    source_train_id='dp',
+                    source_train_id=self.hyperopt_strategy,
                     hyperparam=hyperparam
                 )
 
@@ -98,35 +251,59 @@ class Model(object):
         elif self.hyperopt_strategy is not None:
             # Get from DB last computed hyper-parameters for this DP or a specific train_id.
 
-            table=self.coach.tables['training_status']
+            # Table shortcuts for readability
+            attributes = self.coach.tables['training_attributes']
+            steps      = self.coach.tables['training_steps']
 
             query=(
-                table.select()
-                    .where(
-                        sqlalchemy.and_(
-                            table.c.dataprovider_id==self.dp.id,
-                            table.c.status=='train_hyperopt_end',
-                        )
+                sqlalchemy.select(
+                    [
+                        steps.c.time,
+                        attributes.c.dataprovider_id,
+                        attributes.c.train_session_id,
+                        attributes.c.train_id,
+                        attributes.c.attribute,
+                        attributes.c.value
+                    ]
+                )
+                .join(
+                    steps,
+                    sqlalchemy.and_(
+                        attributes.c.dataprovider_id  == steps.c.dataprovider_id,
+                        attributes.c.train_session_id == steps.c.train_session_id,
+                        attributes.c.train_id         == steps.c.train_id,
                     )
-                    .order_by(table.c.time.desc())
-                    .limit(1)
+                )
+                .where(
+                    sqlalchemy.and_(
+                        attributes.c.dataprovider_id==self.dp.id,
+                        steps.c.status=='train_hyperhandle_end',
+                        attributes.c.attribute=='hyperparam',
+                    )
+                )
+                .order_by(steps.c.time.desc())
+                .limit(1)
             )
 
             if self.hyperopt_strategy != 'last':
                 # Include additional condition
                 query=query.where(
                     sqlalchemy.or_(
-                        table.c.train_id         == self.hyperopt_strategy,
-                        table.c.train_session_id == self.hyperopt_strategy,
+                        attributes.c.train_id         == self.hyperopt_strategy,
+                        attributes.c.train_session_id == self.hyperopt_strategy,
                     )
                 )
 
-            dbresult = query.execute().first()
+            self.log(
+                level=logging.DEBUG,
+                message='Searching DB for optimized hyperparameters as: ' + query.compile(compile_kwargs={'literal_binds': True}).string
+            )
 
+            dbresult = query.execute().first()
 
             if dbresult is not None:
                 # Import the JSON text into a dict
-                self.hyperparam=json.loads(dbresult.hyperparam)
+                self.hyperparam=json.loads(dbresult.value)
 
                 if self.hyperparam['source_train_id']=='self':
                     # Give credit for the source of hyper-params
@@ -140,8 +317,21 @@ class Model(object):
                 hyperparam=self.estimator.hyperparam_exchange()
             )
         else:
-            # If we have something, set it on estimator
-            self.estimator.hyperparam_exchange(self.hyperparam['hyperparam'])
+            # If we have something, set it on xingu.Estimator as an ordered
+            # combination of:
+            # - DataProvider default paramters (including operational ones)
+            # - Searched or found parameters
+            # The last ones overwrite the first ones
+            self.estimator.hyperparam_exchange(
+                {
+                    i[0]:i[1]
+                    for i in
+                    list(self.dp.get_estimator_hyperparameters().items()) +
+                    list(self.hyperparam['hyperparam'].items())
+                }
+            )
+
+        self.log_train_status('train_hyperhandle_end')
 
 
 
@@ -183,7 +373,7 @@ class Model(object):
         train_data=self.dp.feature_engineering_for_train(train_data)
         self.log(
             level=logging.DEBUG,
-            message=f'Feature engineering returned columns: {list(train_data.columns)}'
+            message='Feature engineering returned columns: \n' + pandas.Series(train_data.columns).to_markdown()
         )
 
         # Give it a chance to post-process data before training
@@ -192,15 +382,8 @@ class Model(object):
         # Train/test split
         self.log(message='DataProvider will split data')
         self.sets=self.dp.data_split_for_train(train_data)
-        
-        if self.sets is not None:
-            # Convert the tuple into a meaningful dict
-            self.sets=dict(
-                train = self.sets[0],
-                val   = self.sets[1],
-                test  = self.sets[2]
-            )
 
+        if self.sets is not None:
             self.save_sets_cache()
 
             report=[]
@@ -219,18 +402,20 @@ class Model(object):
         self.log_train_status('train_dataprep_end')
 
         if not self.dp.hollow:
-            self.log(message='Xingu will do some hyperparameter optimization')
-            self.optimize_hyperparam()
-            self.log(message=f'Hyperopt parameters: {self.hyperparam}', level=logging.DEBUG)
+            self.hyperparam_optimize()
 
+            self.log(
+                message=f"Hyperopt parameters from {self.hyperparam['source_train_id']}:\n" + pandas.Series(self.hyperparam['hyperparam']).to_markdown(),
+                level=logging.DEBUG
+            )
 
             self.context='train_fit'
             self.log_train_status('train_fit_start')
 
             self.log(message='Training an Estimator')
+
             self.estimator.fit(
-                train     = self.sets['train'],
-                val       = self.sets['val'],
+                datasets  = self.sets,
                 features  = self.dp.get_estimator_features_list(),
                 target    = self.dp.get_target()
             )
@@ -242,7 +427,6 @@ class Model(object):
         # it to compute something before any PKL saving or metrics computation.
         self.dp.post_process_after_train(self)
 
-        self.context=None
 
 
 
@@ -295,13 +479,13 @@ class Model(object):
         self.batch_predict_data=self.dp.last_pre_process_for_batch_predict(self.batch_predict_data)
 
         # Trigger estimators
-        self.batch_predict_valuations=self.pred_quantiles(self.batch_predict_data)
+        if self.estimator.is_classifier():
+            self.batch_predict_estimations=self.predict_proba(self.batch_predict_data)
+        else:
+            self.batch_predict_estimations=self.predict(self.batch_predict_data)
 
         # Record time of estimation
         self.batch_predict_time = datetime.datetime.now(datetime.timezone.utc)
-
-        # Standardize output
-        self.batch_predict_valuations.rename(columns={'scale':'sigma'}, inplace=True)
 
         self.context=None
 
@@ -314,36 +498,45 @@ class Model(object):
     ######################################################################################
 
 
-    def generic_predict(self, data: pd.DataFrame, quantiles: bool=False) -> pd.DataFrame:
-        """
-        Calls estimator.pred_quantiles() (quantiles==True) or
-        estimator.pred_dist().
-        
-        Return Y_pred with p_* quantiles (quantiles==True) or just μ and σ.
-        """
-        if quantiles:
-            methods=dict(
-                     predict = None if self.dp.hollow else getattr(self.estimator, 'pred_quantiles'),
-                 pre_predict = getattr(self.dp, 'pre_process_for_pred_quantiles'),
-                post_predict = getattr(self.dp, 'post_process_after_pred_quantiles'),
-            )
-        else:
-            methods=dict(
-                     predict = None if self.dp.hollow else getattr(self.estimator, 'pred_dist'),
-                 pre_predict = getattr(self.dp, 'pre_process_for_pred_dist'),
-                post_predict = getattr(self.dp, 'post_process_after_pred_dist'),
-            )
+    def predict(self, data: pandas.DataFrame) -> pandas.DataFrame:
+        return self.generic_predict(data)
 
-        # Do whatever pre-processing the DP wants to do
+
+
+    def predict_proba(self, data: pandas.DataFrame, class_index: int=None) -> pandas.DataFrame:
+        return self.generic_predict(data,method='predict_proba',class_index=class_index)
+
+
+
+    def generic_predict(self, data: pandas.DataFrame, method='predict', class_index: int=None) -> pandas.DataFrame:
+        """
+        Calls estimator.predict() or predict_proba() (method='predict_proba').
+        Let DataProvider pre-process and post-process data respectively before and
+        after predict method.
+
+        Hollow models (no estimator) use this sequence of calls to simulate predicts.
+
+        Return Y_pred with estimations.
+        """
+        methods = dict(
+                 predict = None if self.dp.hollow else getattr(self.estimator, method),
+             pre_predict = getattr(self.dp, f'pre_process_for_{method}'),
+            post_predict = getattr(self.dp, f'post_process_after_{method}'),
+        )
+
+        # Do whatever pre-processing the DataProvider wants to do
         prepared=methods['pre_predict'](X=data.copy(), model=self)
-        
-        
+
         # Call predict method only if we are not hollow
+        params=dict()
+        if method=='predict_proba':
+            params['class_index']=class_index
         Y_pred=methods['predict'](
-            prepared[self.dp.get_estimator_features_list()]
+            prepared[self.dp.get_estimator_features_list()],
+            **params
         ) if methods['predict'] else None
 
-        
+
         # Do whatever post-processing the DP wants to do.
         # Hollow Models (no estimator) take this chance to actually compute
         # Y_pred in here.
@@ -353,97 +546,12 @@ class Model(object):
                 Y_pred    = Y_pred,
                 model     = self
             )
-            
+
             # Reorder to match input
             .reindex(prepared.index)
         )
-        
+
         return Y_pred
-
-    
-
-    def pred_dist(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        The most basic estimation service.
-
-        Returns a DataFrame indexed by unit_id containing loc, scale and score
-        of estimation (in case of multiple models).
-
-        Input data must contain at least self.dp.get_estimator_features_list()
-        columns and has to be pre-feature-engineered, including for pre-req
-        models. In other words, data must have columns ready for predict methods
-        of this Model and also for its pre-reqs.
-        
-        Use your DP’s feature_engineering_for_predict() method before calling
-        pred_dist().
-        """
-
-        self.log(f'Estimating price probability distribution for {data.shape[0]} data points')
-        
-        # 1. Pre-process
-        prepared=self.dp.pre_process_for_pred_dist(X=data.copy(), model=self)
-        
-        # 2. Predict
-        Y_pred = None
-        if not self.dp.hollow:
-            Y_pred=self.estimator.pred_dist(
-                prepared[self.dp.get_estimator_features_list()]
-            )
-        
-        # 3. Post-process
-        return (
-            self.dp.post_process_after_pred_dist(
-                X         = prepared,
-                Y_pred    = Y_pred,
-                model     = self
-            )
-            
-            # Reorder to match input
-            .reindex(prepared.index)
-        )
-
-
-
-    def pred_quantiles(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        The most complete estimation service.
-
-        Returns a DataFrame indexed by unit_id containing p_05..p_95, loc
-        (μ, as p_50), sigma and score of estimation (in case of multiple
-        models).
-
-        Input data must contain at least self.dp.get_estimator_features_list()
-        columns and has to be pre-feature-engineered, including for pre-req
-        models. In other words, data must have columns ready for predict methods
-        of this Model and also for its pre-reqs.
-        
-        Use your DP’s feature_engineering_for_predict() method before calling
-        pred_quantiles().
-        """
-
-        self.log(f'Estimating discrete quantiles of price probability distribution for {data.shape[0]} data points')
-
-        # 1. Pre-process
-        prepared=self.dp.pre_process_for_pred_quantiles(X=data.copy(), model=self)
-        
-        # 2. Predict
-        Y_pred = None
-        if not self.dp.hollow:
-            Y_pred=self.estimator.pred_quantiles(
-                prepared[self.dp.get_estimator_features_list()]
-            )
-
-        # 3. Post-process
-        return (
-            self.dp.post_process_after_pred_quantiles(
-                X         = prepared,
-                Y_pred    = Y_pred,
-                model     = self
-            )
-            
-            # Reorder to match input
-            .reindex(prepared.index)
-        )
 
 
 
@@ -455,11 +563,14 @@ class Model(object):
 
 
 
-    def save_train_sets(self):
+    def trainsets_save(self):
+        def ddebug(input_df, message):
+            self.log(message,level=logging.DEBUG)
+            return input_df
+
         if self.sets is not None:
             self.context='train_savesets'
             self.log_train_status('train_savesets_start')
-
 
             # Record sets in DB
             for part in self.sets.keys():
@@ -467,48 +578,108 @@ class Model(object):
 
                 target=self.dp.get_target()
                 if target in self.sets[part].columns:
-                    df=self.sets[part][[target]].rename(columns={target: 'target'})
-                    df.index.rename('unit_id', inplace=True)
-                    df.reset_index(inplace=True)
-                    df['set']                = part
-                    df['dataprovider_id']    = self.dp.id
-                    df['train_id']           = self.train_id
-                    df['train_session_id']   = self.train_session_id
+                    (
+                        # Start with just the index and target column
+                        self.sets[part][[target]]
 
-                    self.log(level=logging.DEBUG, message=f'{part}: {df.shape[0]}×{df.shape[1]}')
+                        # Standardize target column name
+                        .rename(columns={target: 'target'})
 
-                    df.to_sql(
-                        self.coach.tables['sets'].name,
-                        if_exists='append',
-                        index=False,
-                        con=self.coach.get_db_connection('xingu')
+                        # Tag table with context
+                        .assign(
+                            set                = part,
+                            dataprovider_id    = self.dp.id,
+                            train_id           = self.train_id,
+                            train_session_id   = self.train_session_id,
+                        )
+
+                        # Standardize index
+                        .reset_index(names='index')
+
+                        # Write debug message to console
+                        .pipe(lambda table: ddebug(
+                            table,
+                            f'{part}: {table.shape[0]}×{table.shape[1]}'
+                        ))
+
+                        # Commit to DB
+                        .to_sql(
+                            self.coach.tables['sets'].name,
+                            if_exists='append',
+                            index=False,
+                            con=self.coach.get_db_connection('xingu')
+                        )
                     )
 
             self.log_train_status('train_savesets_end')
 
 
 
-    def save_batch_predict_valuations(self):
-        self.log('Save predicted prices to DB::valuations table')
+    def trainsets_predict(self):
+        if not hasattr(self, 'sets'):
+            return
 
-        to_save=self.batch_predict_valuations.copy(deep=False)
+        self.sets_estimations = dict()
 
-        if hasattr(self, 'batch_predict_valuations'):
-            # Tag valuations with context
-            to_save['time']              = round(self.batch_predict_time.timestamp())
-            to_save['train_id']          = self.train_id
-            to_save['train_session_id']  = self.train_session_id
-            to_save['dataprovider_id']   = self.dp.id
+        for part in self.sets.keys():
+            self.log(f'Predicting {part} part of the training dataset for metrics purposes')
 
-            # Handle score later, as a metric
-            columns=list(set(to_save.reset_index().columns)-{'score'})
+            if self.estimator.is_classifier():
+                self.sets_estimations[part] = self.predict_proba(self.sets[part])
+            else:
+                self.sets_estimations[part] = self.predict(self.sets[part])
 
-            to_save.reset_index()[columns].to_sql(
-                name            = self.coach.tables['valuations'].name,
-                if_exists       = 'append',
-                index           = False,
-#                 con=self.get_config('XINGU_DB')
-                con=self.coach.get_db_connection('xingu')
+        self.compute_and_save_metrics(channel='trainsets')
+
+
+
+    def save_batch_predict_estimations(self):
+        if hasattr(self,'batch_predict_estimations'):
+            self.log('Save predicted prices to DB::estimations table')
+
+            if self.estimator.is_classifier():
+                # predict_proba() returns multiple columns, one for each
+                # classification class. But current DB design only
+                # supports 1 Y_pred value. So drop all Y_pred columns
+                # except DP.proba_class_index
+
+                estimation_col=f'estimation_class_{self.dp.proba_class_index}'
+            else:
+                estimation_col='estimation'
+
+            (
+                self.batch_predict_estimations
+
+                # Work on a shallow copy
+                .copy(deep=False)
+
+                .assign(
+                    # Decide about which estimation column to use
+                    # (in case of a classifier)
+                    estimation       = lambda table: table[estimation_col],
+                )
+
+                # Standardize index
+                .reset_index(names='index')
+
+                # Only want these columns
+                [['index', 'estimation']]
+
+                .assign(
+                    # Tag rows with context
+                    time             = round(self.batch_predict_time.timestamp()),
+                    train_id         = self.train_id,
+                    train_session_id = self.train_session_id,
+                    dataprovider_id  = self.dp.id,
+                )
+
+                # Commit to DB
+                .to_sql(
+                    name         = self.coach.tables['estimations'].name,
+                    if_exists    = 'append',
+                    index        = False,
+                    con          = self.coach.get_db_connection('xingu')
+                )
             )
 
 
@@ -546,7 +717,7 @@ class Model(object):
     #   Return: dict(metric_name: value, metric_name: value, ...)
     #   Example: OKR 15% (DP), Farol (DP)
     #
-    # • compute_valuation_metrics_{NAME}(self, XY, Y_pred)
+    # • compute_estimation_metrics_{NAME}(self, XY, Y_pred)
     #   Return: DataFrame(Index(unit_id), name, value_number, value_text)
     #   Example: Score (Model), Farol (DP)
     #
@@ -571,30 +742,31 @@ class Model(object):
     #
     # self.compute_and_save_metrics() calls:
     #     self.save_model_metrics() calls:
-    #         self.compute_model_metrics() calls:
-    #             self.compute_trainsets_model_metrics() calls:
-    #                 All self.compute_trainsets_model_metrics_{NAME}()
-    #                 All self.dp.compute_trainsets_model_metrics_{NAME}()
-    #             self.compute_global_model_metrics() calls:
-    #                 All self.compute_global_model_metrics_{NAME}()
-    #                 All self.dp.compute_global_model_metrics_{NAME}()
-    #     self.save_valuations_metrics() calls:
-    #         self.compute_valuation_metrics() calls:
-    #             All self.compute_valuation_metrics_{NAME}()
-    #             All self.dp.compute_valuation_metrics_{NAME}()
-    #
+    #             self.compute_model_metrics() calls:
+    #                 self.compute_trainsets_model_metrics() calls (Model.predict() is called here):
+    #                     All self.compute_trainsets_model_metrics_{NAME}()
+    #                     All self.dp.compute_trainsets_model_metrics_{NAME}()
+    #                 self.compute_global_model_metrics() calls:
+    #                     All self.compute_global_model_metrics_{NAME}()
+    #                     All self.dp.compute_global_model_metrics_{NAME}()
+    #     self.save_estimation_metrics() calls:
+    #             self.compute_estimation_metrics() calls:
+    #                 All self.compute_estimation_metrics_{NAME}()
+    #                 All self.dp.compute_estimation_metrics_{NAME}()
 
 
 
-    def get_metrics_computers(self, type: str='valuation') -> list:
+
+    def get_metrics_computers(self, type: str='estimation') -> list:
         """
         Return a list of member functions that can compute metrics.
 
         Current known types are:
 
         • trainsets_model
+        • batch_model
         • global_model
-        • valuation
+        • estimation
         """
 
         methods=[]
@@ -606,11 +778,30 @@ class Model(object):
 
 
 
+    def get_plot_renderers(self, type: str='global_model') -> list:
+        """
+        Return a list of member functions that can render plots.
+
+        Current known types are:
+
+        • trainsets_model
+        • batch_model
+        • global_model
+        """
+
+        methods=[]
+        for method in inspect.getmembers(self, predicate=inspect.ismethod):
+            if 'render_' + type + '_plots_' in method[0]:
+                methods.append(method[1])
+
+        return methods
+
+
+
     def compute_trainsets_model_metrics(self) -> dict:
         """
-        Calls all compute_trainset_model_metrics_{NAME}() from Model and DataProvider
-        to compute metrics for self.sets DataFrames. Y_pred will be computed
-        with pred_quantiles().
+        Calls all compute_trainsets_model_metrics_{NAME}() from Model and
+        DataProvider to compute metrics for self.sets DataFrames.
         """
 
         all_metrics={}
@@ -628,29 +819,53 @@ class Model(object):
 
                 all_metrics[part]={}
 
-                Y_pred=self.pred_quantiles(self.sets[part])
-
                 for domain in methods.keys():
                     params=dict(
                         XY      = self.sets[part],
-                        Y_pred  = Y_pred
+                        Y_pred  = self.sets_estimations[part]
                     )
 
                     # Add model object as parameter if this is DP-provided method
                     if domain == 'dp':
-                        params.update({'model': self})
+                        params['model']=self
 
                     for train_metrics_computer in methods[domain]:
                         all_metrics[part].update(
                             train_metrics_computer(**params)
                         )
 
-        self.log(f'Train metrics: {all_metrics}', level=logging.DEBUG)
         return all_metrics
 
 
 
-    def compute_global_model_metrics(self, XY: pd.DataFrame, Y_pred: pd.DataFrame) -> dict:
+    def compute_batch_model_metrics(self) -> dict:
+        """
+        Calls all compute_batch_model_metrics_{NAME}() from Model and DataProvider.
+        """
+
+        methods = dict(
+            model   = self.get_metrics_computers(type='batch_model'),
+            dp      = self.dp.get_metrics_computers(type='batch_model')
+        )
+
+        metrics={}
+        for domain in methods.keys():
+            # Add model object as parameter if this is DP-provided method
+            params=dict(
+                XY       = self.batch_predict_data,
+                Y_pred   = self.batch_predict_estimations
+            )
+            if domain == 'dp':
+                params['model']=self
+
+            for batch_metrics_computer in methods[domain]:
+                metrics.update(batch_metrics_computer(**params))
+
+        return metrics
+
+
+
+    def compute_global_model_metrics(self) -> dict:
         """
         Calls all compute_global_model_metrics_{NAME}() from Model and DataProvider.
         """
@@ -662,14 +877,10 @@ class Model(object):
 
         metrics={}
         for domain in methods.keys():
-            params=dict(
-                XY      = XY,
-                Y_pred  = Y_pred
-            )
-
             # Add model object as parameter if this is DP-provided method
+            params=dict()
             if domain == 'dp':
-                params.update({'model': self})
+                params['model']=self
 
             for global_metrics_computer in methods[domain]:
                 metrics.update(global_metrics_computer(**params))
@@ -678,9 +889,9 @@ class Model(object):
 
 
 
-    def compute_model_metrics(self) -> pd.DataFrame:
+    def compute_model_metrics(self, channel='trainsets') -> pandas.DataFrame:
         """
-        Calls all compute_trainset_model_metrics_{NAME}() and
+        Calls all compute_trainsets_model_metrics_{NAME}() and
         compute_global_model_metrics_{NAME}() from Model and DataProvider.
 
         All dict to DataFrame handling happens here.
@@ -691,37 +902,32 @@ class Model(object):
         model_metrics = {}
 
         # Get metrics for train, test and val sets
-        if hasattr(self, 'sets') and self.sets is not None:
-            # Operate only if we are into a training session, only if we have actual data.
+        if (channel=='trainsets' or channel=='global') and hasattr(self, 'sets') and self.sets is not None:
+            # Operate only if we are into a training session, only if we
+            # have actual train/test data.
             model_metrics.update(self.compute_trainsets_model_metrics())
-        else:
-            self.log('No train data to compute model metrics.', level=logging.WARNING)
+            model_metrics['global']=self.compute_global_model_metrics()
 
-        # Get global metrics
-        if hasattr(self, 'batch_predict_data') and hasattr(self, 'batch_predict_valuations'):
+        # Get batch predict metrics
+        elif channel == 'batch' and hasattr(self, 'batch_predict_data') and hasattr(self, 'batch_predict_estimations'):
             # Operate only if we batch predict data and estimations
-            model_metrics.update(
-                {
-                    'global': self.compute_global_model_metrics(
-                        XY       = self.batch_predict_data,
-                        Y_pred   = self.batch_predict_valuations
-                    )
-                }
-            )
+            model_metrics['batch'] = self.compute_batch_model_metrics()
         else:
-            self.log('No data to compute model global metrics.', level=logging.WARNING)
+            self.log('No batch data to compute model metrics.', level=logging.WARNING)
 
 
         # Now convert the model_metrics dict into the metrics DataFrame.
         # Separate numeric and textual values.
         metrics=None
         for part in model_metrics:
-            match_real_numbers=r'((\+|-)?([0-9]+)(\.[0-9]+)?)|((\+|-)?\.?[0-9]+)'
-            met=pd.Series(model_metrics[part])
-            metricsdf=(
+            match_real_numbers = r'((\+|-)?([0-9]+)(\.[0-9]+)?)|((\+|-)?\.?[0-9]+)'
+            met = pandas.Series(model_metrics[part])
+            metricsdf = (
                 # Start with only the numeric metrics
-                pd.DataFrame(met[met.astype(str).str.match(match_real_numbers)]
-                .rename('value_number'))
+                pandas.DataFrame(
+                    met[met.astype(str).str.match(match_real_numbers)]
+                    .rename('value_number')
+                )
 
                 # Add columns for textual metrics
                 .join(
@@ -733,430 +939,525 @@ class Model(object):
                 )
 
                 # Make sure empty cells have null
-                .fillna(pd.NA)
+                .fillna(pandas.NA)
+
+                .assign(
+                    # Convert to appropriate type
+                    value_number = lambda table: pandas.to_numeric(table.value_number),
+                    set = part
+                )
+
+                # Standardize index
+                .reset_index(names='name')
             )
-
-
-            # Convert to appropriate type
-            metricsdf['value_number']=pd.to_numeric(metricsdf['value_number'])
-
-            # Make the metric name a regular column called 'name'
-            metricsdf.index.rename('name', inplace=True)
-            metricsdf.reset_index(inplace=True)
-
-            metricsdf['set'] = part
 
             if metrics is None:
                 metrics=metricsdf
             else:
-                metrics=pd.concat([metrics,metricsdf])
+                metrics=pandas.concat([metrics,metricsdf])
+
+        if metrics is not None and metrics.shape[0]>0:
+            self.log('Model metrics: \n' + metrics.to_markdown(), level=logging.DEBUG)
 
         return metrics
 
 
 
-    def save_model_metrics(self):
-        self.context='model_metrics'
-        self.log_train_status('model_metrics_start')
+    def render_trainsets_model_plots(self) -> dict:
+        """
+        Calls all render_trainsets_model_plots_{NAME}() from Model and
+        DataProvider to render plots for each of the self.sets DataFrames.
+        """
 
-        metrics=self.compute_model_metrics()
+        all_plots={}
 
-        if metrics is not None:
-            # Tag metrics with IDs of this training session
-            metrics['time']               = round(self.batch_predict_time.timestamp())
-            metrics['dataprovider_id']    = self.dp.id
-            metrics['train_session_id']   = self.train_session_id
-            metrics['train_id']           = self.train_id
-
-            # Save metrics to DB
-            self.log('Saving model metrics to DB')
-            metrics.to_sql(
-                name           = self.coach.tables['metrics_model'].name,
-                if_exists      = 'append',
-                index          = False,
-#                 con=self.get_config('ROBSON_DB')
-                con=self.coach.get_db_connection('xingu')
+        if hasattr(self, 'sets'):
+            methods = dict(
+                model   = self.get_plot_renderers(type='trainsets_model'),
+                dp      = self.dp.get_plot_renderers(type='trainsets_model')
             )
 
-        self.log_train_status('model_metrics_end')
+            # Collect metrics for trained model, making it predict values for
+            # known and unknown data
+            for part in self.sets.keys():
+                self.log(f'Render plots for {part} part of the training dataset')
+
+                all_plots[part]={}
+
+                for domain in methods.keys():
+                    params=dict(
+                        XY      = self.sets[part],
+                        Y_pred  = self.sets_estimations[part]
+                    )
+
+                    # Add model object as parameter if this is DP-provided method
+                    if domain == 'dp':
+                        params['model']=self
+
+                    for train_plot_renderer in methods[domain]:
+                        plots=train_plot_renderer(**params)
+                        if plots is not None:
+                            for p in plots:
+                                matplotlib.pyplot.close(plots[p])
+                            all_plots[part].update(plots)
+
+        return all_plots if len(all_plots.keys()) else None
 
 
 
-    def compute_valuation_metrics(self) -> pd.DataFrame:
+    def render_batch_model_plots(self) -> dict:
         """
-        Calls all compute_valuation_metrics_{NAME}() from Model and DataProvider.
+        Calls all render_batch_model_plots_{NAME}() from Model and
+        DataProvider to render plots for the batch_predict_data.
+        """
+
+        methods = dict(
+            model   = self.get_plot_renderers(type='batch_model'),
+            dp      = self.dp.get_plot_renderers(type='batch_model')
+        )
+
+        all_plots = dict()
+
+        for domain in methods.keys():
+            # Add model object as parameter if this is DP-provided method
+            params=dict(
+                XY       = self.batch_predict_data,
+                Y_pred   = self.batch_predict_estimations
+            )
+            if domain == 'dp':
+                params['model']=self
+
+            for batch_plot_renderer in methods[domain]:
+                plots=batch_plot_renderer(**params)
+                if plots is not None:
+                    for p in plots:
+                        matplotlib.pyplot.close(plots[p])
+                    all_plots.update(plots)
+
+        return all_plots if len(all_plots.keys()) else None
+
+
+
+    def render_global_model_plots(self) -> dict:
+        """
+        Calls all render_global_model_plots_{NAME}() from Model and
+        DataProvider to render plots for whatever the DataProvider wants.
+        """
+
+        methods = dict(
+            model   = self.get_plot_renderers(type='global_model'),
+            dp      = self.dp.get_plot_renderers(type='global_model')
+        )
+
+        all_plots = dict()
+
+        for domain in methods.keys():
+            # Add model object as parameter if this is DP-provided method
+            params=dict()
+            if domain == 'dp':
+                params['model']=self
+
+            for global_plot_renderer in methods[domain]:
+                plots=global_plot_renderer(**params)
+                if plots is not None:
+                    for p in plots:
+                        matplotlib.pyplot.close(plots[p])
+                    all_plots.update(plots)
+
+        return all_plots if len(all_plots.keys()) else None
+
+
+
+    def render_model_plots(self, channel='trainsets') -> dict:
+        """
+        Calls all render_trainsets_model_plots_{NAME}() and
+        render_global_model_plots_{NAME}() from Model and DataProvider.
+        """
+        self.log('Render model plots.')
+
+        model_plots = dict()
+
+        # Get plots for train, test and val sets
+        if (channel=='trainsets' or channel=='global') and hasattr(self, 'sets') and self.sets is not None:
+            # Operate only if we are into a training session, only if we
+            # have actual train/test data.
+            model_plots.update(self.render_trainsets_model_plots())
+            model_plots['global']=self.render_global_model_plots()
+            if model_plots['global'] is None:
+                del model_plots['global']
+
+        # Get batch predict metrics
+        elif channel == 'batch' and hasattr(self, 'batch_predict_data') and hasattr(self, 'batch_predict_estimations'):
+            # Operate only if we batch predict data and estimations
+            model_plots['batch'] = self.render_batch_model_plots()
+            if model_plots['batch'] is None:
+                del model_plots['batch']
+
+        return model_plots if len(model_plots.keys()) else None
+
+
+        
+
+    def save_model_metrics(self, channel='trainsets'):
+        self.context='model_metrics'
+        self.log_train_status(f'model_{channel}_metrics_start')
+
+        metrics = self.compute_model_metrics(channel)
+
+        if metrics is not None:
+            the_time=self.trained.timestamp()
+            if channel=='batch':
+                the_time=round(self.batch_predict_time.timestamp())
+
+            self.log('Saving model metrics to DB')
+
+            (
+                metrics
+
+                # Tag metrics with IDs of this training session
+                .assign(
+                    time              = the_time,
+                    dataprovider_id   = self.dp.id,
+                    train_session_id  = self.train_session_id,
+                    train_id          = self.train_id
+                )
+
+                # Save metrics to DB
+                .to_sql(
+                    name           = self.coach.tables['metrics_model'].name,
+                    if_exists      = 'append',
+                    index          = False,
+                    con            = self.coach.get_db_connection('xingu')
+                )
+            )
+
+        plots = self.render_model_plots(channel)
+
+        if len(plots.keys())>0:
+            plot_template="{dp} • {time} • {full_train_id} • {part} • {signature}.{ext}"
+
+            formats = self.get_config('PLOTS_FORMAT', default='svg')
+            path = self.get_config('PLOTS_PATH', default='.')
+
+            # PLOTS_FORMAT might have a single format as 'svg' but also a list of formats,
+            # as 'png, svg', so we´ll save plots in all formats
+
+            for channel in plots.keys():
+                self.log('Plots: ' + str(plots))
+                for plot in plots[channel].keys():
+                    for ext in [f.strip() for f in formats.split(',')]:
+                        plots[channel][plot].savefig(
+                            fname = (
+                                pathlib.Path(path) /
+                                plot_template.format(
+                                    dp=self.dp.id,
+                                    time=Model.time_fs_str(
+                                        self.batch_predict_time
+                                        if channel == 'batch'
+                                        else self.trained
+                                    ),
+                                    full_train_id=self.get_full_train_id(),
+                                    part=channel,
+                                    signature=plot,
+                                    ext=ext
+                                )
+                            ),
+                            dpi = 300,
+                            bbox_inches = 'tight',
+                            transparent = True
+                        )
+
+        self.log_train_status(f'model_{channel}_metrics_end')
+
+
+
+    def compute_batch_estimation_metrics(self) -> pandas.DataFrame:
+        if hasattr(self, 'batch_predict_data') and hasattr(self, 'batch_predict_estimations'):
+            return self.compute_estimation_metrics(self.batch_predict_data,self.batch_predict_estimations)
+        else:
+            self.log('No data to compute estimations metrics.', level=logging.WARNING)
+
+
+
+    def compute_batch_model_metrics_classical(self, XY: pandas.DataFrame, Y_pred: pandas.DataFrame) -> dict:
+        return self.compute_trainsets_model_metrics_classical(XY,Y_pred)
+
+
+
+    def compute_estimation_metrics(self, XY: pandas.DataFrame, Y_pred: pandas.DataFrame) -> pandas.DataFrame:
+        """
+        Calls all compute_estimation_metrics_{NAME}() from Model and DataProvider.
 
         Each method must return a DataFrame with following columns:
-        - unit_id (has to be the index)
+        - index (has to be the index)
         - name -- name of metric, such as 'score'
         - value_number -- metric value if numeric, such as '0.97234'
         - value_text -- metric value if it is text, such as 'red'
-
-        Methods being called will get parameter:
-        - self.batch_predict_data as XY
-        - self.batch_predict_valuations as Y_pred
         """
 
-        self.log(f'Compute per-unit valuation metrics')
+        self.log(f'Compute estimation metrics')
 
         metrics=None
-        if hasattr(self, 'batch_predict_data') and hasattr(self, 'batch_predict_valuations'):
-            methods = dict(
-                model   = self.get_metrics_computers(type='valuation'),
-                dp      = self.dp.get_metrics_computers(type='valuation')
-            )
 
-            for domain in methods.keys():
-                for valuation_metrics_computer in methods[domain]:
-                    params=dict(
-                        XY      = self.batch_predict_data,
-                        Y_pred  = self.batch_predict_valuations
-                    )
+        methods = dict(
+            model   = self.get_metrics_computers(type='estimation'),
+            dp      = self.dp.get_metrics_computers(type='estimation')
+        )
 
-                    if domain == 'dp':
-                        params.update({'model': self})
-
-                for valuation_metrics_computer in methods[domain]:
-                    m1=valuation_metrics_computer(**params)
-
-                    if metrics is None:
-                        metrics=m1
-                    elif m1 is not None:
-                        metrics=pd.concat([metrics,m1])
-
-            if metrics is not None:
-                # Make sure index has correct name
-                metrics.index.rename(self.batch_predict_data.index.name, inplace=True)
-
-                # Drop rows where BOTH value_number AND value_text have NaN
-                metrics.dropna(
-                    subset={'value_number','value_text'}.intersection(metrics.columns),
-                    how='all',
-                    inplace=True
+        for domain in methods.keys():
+            for estimation_metrics_computer in methods[domain]:
+                params=dict(
+                    XY      = XY,
+                    Y_pred  = Y_pred
                 )
-            else:
-                self.log('No computer methods for valuation metrics', level=logging.WARNING)
 
-        else:
-            self.log('No data to compute valuation metrics.', level=logging.WARNING)
+                if domain == 'dp':
+                    params.update({'model': self})
 
-        return metrics
+            # Call each and every metrics computer method
+            for estimation_metrics_computer in methods[domain]:
+                m1=estimation_metrics_computer(**params)
 
-
-
-    def save_valuation_metrics(self):
-        """
-        Trigger computation of valuation metrics and save them on DB.
-        """
-
-        self.log(f'Preparing for valuation metrics')
-
-        metrics=None
-
-        metrics=self.compute_valuation_metrics()
-        self.log(f'Valuation metrics computed')
+                if metrics is None:
+                    metrics=m1
+                elif m1 is not None:
+                    metrics=pandas.concat([metrics,m1])
 
         if metrics is not None:
-            # Tag metrics with some context
-            metrics['time']               = round(self.batch_predict_time.timestamp())
-            metrics['train_id']           = self.train_id
-            metrics['train_session_id']   = self.train_session_id
-            metrics['dataprovider_id']    = self.dp.id
+            # Make sure index has correct name
+            metrics.index.rename(XY.index.name, inplace=True)
 
-            self.log(f'Save valuation metrics to DB')
-
-            metrics.reset_index().to_sql(
-                name         = self.coach.tables['metrics_valuation'].name,
-                if_exists    = 'append',
-                index        = False,
-#                 con=self.get_config('ROBSON_DB')
-                con=self.coach.get_db_connection('xingu')
+            # Drop rows where BOTH value_number AND value_text have NaN
+            metrics.dropna(
+                subset={'value_number','value_text'}.intersection(metrics.columns),
+                how='all',
+                inplace=True
             )
+        else:
+            self.log('No estimations metrics computer methods.', level=logging.WARNING)
 
-
-
-    def compute_and_save_metrics(self):
-        self.save_model_metrics()
-        self.save_valuation_metrics()
-
-
-
-    def compute_valu__OBSOLETE__ation_metrics_score(self, XY: pd.DataFrame, Y_pred: pd.DataFrame) -> pd.DataFrame:
-        # Score is only available if using more than 1 estimator
-        if 'score' in Y_pred.columns:
-            score_metric=Y_pred[['score']].rename(columns={'score': 'value_number'})
-            score_metric['name']='score'
-
-            return score_metric[['name','value_number']]
-
-
-
-    def compute_global_model_metrics_value_per_meter(self, XY: pd.DataFrame, Y_pred: pd.DataFrame) -> dict:
-        """
-        Compute μ, median and σ of value per m² for input dataset.
-        
-        Call it from your dataprovider with a data facet to get regional values.
-        """
-        
-        if XY.shape[0]==0:
-            return {}
-        
-        POINT_ESTIMATE = self.estimator.POINT_ESTIMATE if self.estimator else self.dp.POINT_ESTIMATE
-        
-        metrics={            
-            'classic:Mean value per m²':    Y_pred[POINT_ESTIMATE].mean(),
-
-            'classic:Median value per m²':  Y_pred[POINT_ESTIMATE].median(),
-
-            'classic:σ value per m²':       Y_pred[POINT_ESTIMATE].std(),
-        }
-        
         return metrics
-    
-    
-    
-    def compute_trainsets_model_metrics_classical(self, XY: pd.DataFrame, Y_pred: pd.DataFrame) -> dict:
+
+
+
+    def save_estimation_metrics(self, channel='trainsets'):
+        """
+        Trigger computation of estimation metrics and save them on DB.
+        """
+
+        if channel=='batch_predict':
+            self.log(f'Preparing for estimations metrics')
+
+            metrics=None
+
+            metrics=self.compute_batch_estimation_metrics()
+            self.log(f'Estimation metrics computed')
+
+            if metrics is not None:
+                # Tag metrics with some context
+                metrics['time']               = round(self.batch_predict_time.timestamp())
+                metrics['train_id']           = self.train_id
+                metrics['train_session_id']   = self.train_session_id
+                metrics['dataprovider_id']    = self.dp.id
+
+                self.log(f'Save estimations metrics to DB')
+
+                metrics.reset_index(names='index').to_sql(
+                    name         = self.coach.tables['metrics_estimation'].name,
+                    if_exists    = 'append',
+                    index        = False,
+                    con=self.coach.get_db_connection('xingu')
+                )
+
+
+
+    def compute_and_save_metrics(self, channel='trainsets'):
+        """
+        Trigger all metrics computations.
+        Can act on trainsets (self.sets and self.sets_estimations) and
+        on data from the batch predict service (self.batch_predict_data).
+        """
+        self.save_model_metrics(channel)
+        self.save_estimation_metrics(channel)
+
+
+
+    def compute_trainsets_model_metrics_classical(self, XY: pandas.DataFrame, Y_pred: pandas.DataFrame) -> dict:
         """
         Compute classical error metrics between X and Y_pred as returned
         by pred_quantiles().
-        
+
         Call it from your dataprovider with a data facet to get regional values.
         """
 
         # Target column name
         target=self.dp.get_target()
 
-        POINT_ESTIMATE = self.estimator.POINT_ESTIMATE if self.estimator else self.dp.POINT_ESTIMATE
-        UPPER_BOUND = self.estimator.UPPER_BOUND if self.estimator else self.dp.UPPER_BOUND
-        LOWER_BOUND = self.estimator.LOWER_BOUND if self.estimator else self.dp.LOWER_BOUND
-        QUANTILES = self.estimator.QUANTILES if self.estimator else self.dp.QUANTILES
-        
+        # General info and collection of IDs
+        metrics={'classic:count': XY.shape[0]}
+
         if XY.shape[0]<2:
             self.log(
                 level=logging.WARNING,
                 message='Data facet provided is empty or too small for this kind of metric computation. Skiping compute_trainsets_model_metrics_classical.'
             )
-            return {
-                'classic:count':        XY.shape[0]
-            }
+        elif self.estimator.is_classifier():
+            proba_class_col=f'estimation_class_{self.dp.proba_class_index}'
 
-        metrics={
-            # General info and collection of IDs
-            'classic:count':        XY.shape[0],
-
-            # Collection of Metrics
-            'classic:RMSE':                              sklm.mean_squared_error(
-                y_true = XY[target],
-                y_pred = Y_pred[POINT_ESTIMATE],
-                squared = False
-            ),
-
-             'classic:Mean Absolute Error':              sklm.mean_absolute_error(
-                y_true = XY[target],
-                y_pred = Y_pred[POINT_ESTIMATE]
-            ),
-
-            'classic:Mean Absolute Percentage Error':    sklm.mean_absolute_percentage_error(
-                y_true = XY[target],
-                y_pred = Y_pred[POINT_ESTIMATE]
-            ),
-
-            # Med(|(ŷ-y)÷y|)
-            'classic:Median Absolute Percentage Error':  Model.median_ape(
-                y_true = XY[target],
-                y_pred = Y_pred[POINT_ESTIMATE]
-            ),
-
-            # Med((ŷ-y)÷y)
-            'classic:Median Percentage Error':  Model.median_pe(
-                y_true = XY[target],
-                y_pred = Y_pred[POINT_ESTIMATE]
-            ),
-
-            # https://en.wikipedia.org/wiki/Mean_percentage_error
-            # [ ∑(ŷ-y)÷y ] ÷ n
-            'classic:Mean Percentage Error':             (
-                (
-                    Y_pred[POINT_ESTIMATE]-XY[target]
-                ) / XY[target]
-            ).mean(),
-
-            # [ ∑(p80-p20)÷p50 ] ÷ n
-            'classic:Interval':                          (
-                (
-                    Y_pred[UPPER_BOUND]-Y_pred[LOWER_BOUND]
-                ) / Y_pred[POINT_ESTIMATE]
-            ).mean(),
-        }
-
-        quantile_columns = [q[0] for q in QUANTILES]
-        dropme = list(set(Y_pred.columns) - set(quantile_columns))
-        
-        # For each p_*, compute proportion of error bigger than that p_*.
-        # For example, if this number for p_20 is 0.4, means that 40% of p_20’s
-        # numbers are above 20% of the expected correct price.
-        calibration = (
-            (
-                Y_pred
-                [quantile_columns]
-                .drop(columns=dropme, errors='ignore')
-                .gt(XY[target], axis=0)
-                .mean()
-            ) -
-            pd.DataFrame(self.dp.QUANTILES).set_index(0)[1]
-        )
-
-        metrics['classic:Quantile Deviation'] = calibration.abs().mean()
-
-        calibration.index = 'classic:Quantile Deviation ' + calibration.index
-
-        metrics.update(calibration.to_dict())
-        
-        # Calculate percentiles for Absolute Percentage Error (APE)
-        # Use numpy.percentile - percentile values from 0 to 100
-        quantile_values = [q[1] for q in QUANTILES]
-
-        percentile_ape = [numpy.percentile(
-            numpy.abs(Y_pred[POINT_ESTIMATE] - XY[target])/XY[target], q=100*quantile_value
-        ) for quantile_value in quantile_values]
-        
-        for idx, q in enumerate(quantile_columns):
-            metrics[f'classic:Absolute Percentage Error {q}'] = percentile_ape[idx]
-        
-        return metrics
-
-
-
-    def compute_global_model_metrics_OKR15p(self, XY: pd.DataFrame, Y_pred: pd.DataFrame, point='p_50') -> dict:
-        """
-        Compute proportion of units where estimation error is higher than 15% (OKR 15%).
-        """
-
-        # Target column name
-        target=self.dp.get_target()
-
-        self.log('Computing OKR 15% metric')
-
-        # Get only the unit_ids which we know the true price
-        known_price_index=XY[~(XY[target].isna())].index
-
-        if XY.loc[known_price_index].shape[0]<2:
-            self.log(
-                level=logging.WARNING,
-                message='Data facet provided is empty or too small for this kind of metric computation. Skiping compute_global_model_metrics_OKR15p.'
+            metrics=dict(
+                **metrics,
+                **{
+                    # Collection of Metrics
+                    'classic:ROC AUC':      sklm.roc_auc_score(
+                        y_true = XY[target],
+                        y_score = Y_pred[proba_class_col]
+                    ),
+                    'classic:Average Precision Score': sklm.average_precision_score(
+                        y_true = XY[target],
+                        y_score = Y_pred[proba_class_col]
+                    ),
+                }
             )
-            return {
-                'OKR error > 15%:proportion': 0,
-                'OKR error > 15%:count':      XY.loc[known_price_index].shape[0]
-            }
+        else:
+            metrics=dict(
+                **metrics,
+                **{
+                    # Collection of Metrics
+                    'classic:RMSE':           sklm.mean_squared_error(
+                        y_true = XY[target],
+                        y_pred = Y_pred,
+                        squared = False
+                    ),
 
-        self.log(f'{XY.shape[0]} of {XY.loc[known_price_index].shape[0]} units have known price')
+                     'classic:Mean Absolute Error':   sklm.mean_absolute_error(
+                        y_true = XY[target],
+                        y_pred = Y_pred
+                    ),
 
-        # count(|y÷ŷ - 1| > 15%) ÷ n
-        count_of_big_errors = (
-            (
-                XY.loc[known_price_index][target] /
-                Y_pred.loc[known_price_index][point] -
-                1
+                    'classic:Mean Absolute Percentage Error': sklm.mean_absolute_percentage_error(
+                        y_true = XY[target],
+                        y_pred = Y_pred
+                    ),
+
+                    # Med(|(ŷ-y)÷y|)
+                    'classic:Median Absolute Percentage Error':  Model.median_ape(
+                        y_true = XY[target],
+                        y_pred = Y_pred
+                    ),
+
+                    # Med((ŷ-y)÷y)
+                    'classic:Median Percentage Error':  Model.median_pe(
+                        y_true = XY[target],
+                        y_pred = Y_pred
+                    ),
+
+                    # https://en.wikipedia.org/wiki/Mean_percentage_error
+                    # [ ∑(ŷ-y)÷y ] ÷ n
+                    'classic:Mean Percentage Error': ((Y_pred-XY[target])/XY[target]).mean(),
+                }
             )
-            .abs() > (15/100)
-        ).value_counts()
-
-        count_of_big_errors = count_of_big_errors[True] if True in count_of_big_errors else 0
-
-        metrics={
-            'OKR error > 15%:proportion': count_of_big_errors / XY.loc[known_price_index].shape[0],
-            'OKR error > 15%:count':      XY.loc[known_price_index].shape[0]
-        }
 
         return metrics
 
 
 
-    def compute_global_model_metrics_feature_importance_from_estimator(self, XY: pd.DataFrame, Y_pred: pd.DataFrame) -> dict:
+    def compute_global_model_metrics_feature_importance_from_estimator(self,**args) -> dict:
         """
         Extract feature importance from estimator (NGBoost) and return a dict
         suitable for R3 metrics framework.
-        
+
         Resulting dict will have this layout:
-        
+
         {
             'feature importance:estimator:building_year:loc:importance': 0.0710
             'feature importance:estimator:building_year:loc:rank': 7.0,
-            
+
             'feature importance:estimator:building_year:scale:importance': 0.078
             'feature importance:estimator:building_year:scale:rank': 7.0,
-            
+
             'feature importance:estimator:complex_fee_m2:loc:importance': 0.112
             'feature importance:estimator:complex_fee_m2:loc:rank': 2.0,
-            
+
             'feature importance:estimator:complex_fee_m2:scale:importance': 0.13
             'feature importance:estimator:complex_fee_m2:scale:rank': 3.0
             ...
         }
         """
-        
+
         mprefix='feature importance:estimator:'
-        
+
         if self.dp.hollow:
             # Since hollow Models doesn’t have an internal estimator, can’t
             # retrieve feature importance. Return an empty dict.
             return dict()
         else:
             return (
-                # Organize information in a DataFrame. God, we love pandas.DataFrame
-                pd.DataFrame(
+                pandas.DataFrame(
                     dict(
                         features=self.dp.get_estimator_features_list(),
-                        loc_importance=self.estimator.bagging_members[0].feature_importances_[0],
-                        scale_importance=self.estimator.bagging_members[0].feature_importances_[1]
+                        importance=self.estimator.bagging_members[0].feature_importances_,
                     )
                 )
+                .sort_values('importance',ascending=False)
 
-                # Prepare importance rank for loc. Sort by importance, reset index
-                # and use new index as rank.
-                .sort_values('loc_importance',ascending=False)
+                # Useless index
                 .reset_index(drop=True)
-                .reset_index()
-                .rename(columns={'index': 'loc_rank'})
 
-                # Prepare importance rank for scale
-                .sort_values('scale_importance',ascending=False)
-                .reset_index(drop=True)
-                .reset_index()
-                .rename(columns={'index': 'scale_rank'})
+                # Usefull new index, lets use as the feature importance rank
+                .reset_index(names='rank')
 
                 # Make rank start with 1, not 0
                 .assign(
-                    loc_rank   = lambda df: df.loc_rank   + 1,
-                    scale_rank = lambda df: df.scale_rank + 1,
+                    rank   = lambda table: table['rank']   + 1
                 )
 
-                # Data wrangling for easy transformation into a dict needed by
-                # R3 metrics framework
+                # Data wrangling for easy transformation into a dict
+                # needed by Xingu metrics framework
                 .set_index('features')
                 .stack()
                 .reset_index()
 
                 # Fabricate metric names
                 .assign(
-                    level_1 = lambda df: df.level_1.str.replace('_',':'),
-                    name    = lambda df: mprefix + df.features + ':' + df.level_1
+                    name    = lambda table: mprefix + table.features + ':' + table.level_1
                 )
+
+                .drop(columns=['features','level_1'])
+
                 .rename(columns={0: 'value_number'})
                 .set_index('name')
-                .sort_index()
 
-                # Get the Series with values only
+                # Make it a dict() as Xingu needs for its DB
                 .value_number
-
-                # Finaly, export as a Python dict
                 .to_dict()
             )
 
 
 
-    def median_ape(y_true: pd.Series, y_pred: pd.Series) -> float:
+    def render_global_model_plots_feature_importance_from_estimator(self):
+        return (
+            {
+                'Feature Importance': (
+                    pandas.DataFrame(
+                        dict(
+                            features = self.dp.get_estimator_features_list(),
+                            importance = self.estimator.bagging_members[0].feature_importances_,
+                        )
+                    )
+                    .sort_values('importance',ascending=True)
+
+                    # Useless index
+                    .set_index('features')
+                    
+                    .plot
+                    .barh()
+                    .get_figure()
+                )
+            } if self.dp.hollow==False else None
+        )
+
+
+    def median_ape(y_true: pandas.Series, y_pred: pandas.Series) -> float:
         # Med(|(ŷ-y)÷y|)
         return numpy.median(
                 numpy.abs(
@@ -1166,7 +1467,7 @@ class Model(object):
 
 
 
-    def median_pe(y_true: pd.Series, y_pred: pd.Series) -> float:
+    def median_pe(y_true: pandas.Series, y_pred: pandas.Series) -> float:
         # Med(|(y-ŷ)÷ŷ|)
         return numpy.median(
                     (y_pred - y_true) / y_true
@@ -1184,6 +1485,9 @@ class Model(object):
 
 
     def _handle_xz(file_obj, mode):
+        """
+        Compressor handler for Pathlib when file extension is .xz
+        """
         preset=None
         if 'w' in mode:
             preset=9
@@ -1211,26 +1515,29 @@ class Model(object):
             resolved_path=pathlib.Path(resolved_path).resolve()
 
         filename_tpl  = '{dataprovider} • {time} • {full_train_id}.pkl'
-        filename_tpl += '.xz' if compress else ''
+        if compress: filename_tpl += '.xz'
 
         filename=filename_tpl.format(
-            dataprovider=self.dp.id,
-            full_train_id=self.get_full_train_id(),
-            time=self.trained_str()
+            dataprovider   = self.dp.id,
+            full_train_id  = self.get_full_train_id(),
+            time           = Model.time_fs_str(self.trained)
         )
 
         target = resolved_path / filename
 
+        if str(target).startswith('s3://'):
+            target=urllib.parse.unquote(target.as_uri())
+
         self.log(
             'Serialized trained model object to {target}'.format(
-                target=urllib.parse.unquote(target.as_uri())
+                target=target
             )
         )
 
         smart_open.register_compressor('.xz', Model._handle_xz)
 
         # Write to object storage or maybe filesystem
-        with smart_open.open(urllib.parse.unquote(target.as_uri()), "wb") as f:
+        with smart_open.open(target, mode="wb") as f:
             pickle.dump(self, f, pickle.HIGHEST_PROTOCOL)
 
         if dvc_resolved_path:
@@ -1327,7 +1634,6 @@ class Model(object):
             # Result will be {train_session_id}* or *{train_id}
             full_train_id=f'{train_session_id}{train_id}'
 
-
         filename=filename_template.format(
             dataprovider_id    = dp_id,
             time               = '*',
@@ -1350,7 +1656,7 @@ class Model(object):
             ]
         else:
             available=[f for f in list(resolved_path.glob(filename)) if '.dvc' not in str(f)]
-            
+
         available.sort()
 
         best=None
@@ -1368,9 +1674,9 @@ class Model(object):
 
         if best is None:
             # Prepare filter by time
-            if (isinstance(as_of,str) and as_of != '*') or (isinstance(as_of,pd.Timestamp) or isinstance(as_of,datetime.datetime) or isinstance(as_of,datetime.date)):
+            if (isinstance(as_of,str) and as_of != '*') or (isinstance(as_of,pandas.Timestamp) or isinstance(as_of,datetime.datetime) or isinstance(as_of,datetime.date)):
                 # Try to convert string to datetime
-                as_of=pd.to_datetime(as_of).to_pydatetime()
+                as_of=pandas.to_datetime(as_of).to_pydatetime()
 
                 # Extract only time from filenames
                 times=[
@@ -1399,7 +1705,10 @@ class Model(object):
 
         smart_open.register_compressor('.xz', Model._handle_xz)
 
-        with smart_open.open(urllib.parse.unquote(model_file.as_uri()), 'rb') as f:
+        if str(model_file).startswith('s3://'):
+            model_file=urllib.parse.unquote(model_file.as_uri())
+
+        with smart_open.open(model_file, 'rb') as f:
             try:
                 bob=pickle.load(f)
             except Exception as e:
@@ -1441,11 +1750,11 @@ class Model(object):
 
 
 
-    ######################################################################################
+    #####################################################################
     ##
     ## Operational procedures
     ##
-    ######################################################################################
+    #####################################################################
 
 
 
@@ -1454,172 +1763,18 @@ class Model(object):
         Delete all internal data used for training and batch predict
         """
 
-        self.log("Flushing internal datasets")
-
-        attr=[
-            'sets',
-            'batch_predict_data',
-            'batch_predict_valuations',
-            'batch_predict_time',
-        ]
+            # sets
+            # sets_estimations
+        attr="""
+            batch_predict_data
+            batch_predict_estimations
+            batch_predict_time
+        """.split()
 
         for a in attr:
             if hasattr(self, a):
+                self.log(f"Flushing internal data: {a}")
                 delattr(self,a)
-
-
-
-    def __init__(self,
-                    dp:                            DataProvider,
-                    coach:                         Coach = None,
-                    estimator_class                            = Estimator,
-
-                    # Control pre-trained model loading:
-                    ## Load a pre-trained model
-                    trained:                              bool = False,
-
-                    ## Load only the Estimator object
-                    estimator_only:                       bool = False,
-                    pre_trained_path:                     str  = None,
-                    pre_trained_train_session_id:         str  = '*',
-                    pre_trained_train_id:                 str  = '*',
-                    pre_trained_as_of:                    str  = '*',
-                    train_or_session_id_match_list:       list = None,
-                    hyperopt_strategy:                    str  = 'last',
-
-                    delayed_prereq_binding:               bool = False
-                ):
-        """
-        Parameters:
-
-        - dp: A DataProvider object or an ID (str) of a DataProvider to load a
-        pre-trained Model for this DataProvider.
-
-        - coach: A Coach object. Needed if Model will be trained. Needed if Model
-        will do database operations. Not needed if loading a pre-trained Model.
-
-        - estimator_class: A Estimator-derived class name to be trained by Model.
-        Not required if loading a pre-trained Model.
-
-        - trained: Causes Model to load a pre-trained object or not. The default (False)
-        will give an untrained Model object.
-
-        - pre_trained_path: Local or S3 path to search for pre-trained objects and/or to
-        save them after training.
-
-        - estimator_only: False loads and returns an entire Model object as it was
-        pickled, complete with methods and pickled DataProvider object. True, loads only
-        the estimator object and some IDs, DataProvider object and methods will not come
-        from pickle. Use with caution because loaded estimator might be incompatible with
-        current Model and DataProvider classes and their attributes.
-
-        - hyperopt_strategy: How to handle estimator hyper-parameters optimization:
-            - 'self' - cause it to optimize (a lengthy process).
-            - 'last' (default)  - cause it to search DB the latest compatible
-            hyper-parameters set, matching the DataProvider.
-            - train_id string - cause it to get from DB a specific train_id
-            hyper-parameters set.
-            - None - use Estimator object internal defaults
-
-        - delayed_prereq_binding: If DP specifies pre-req models, do not load them too.
-        Instead, a later call to self.load_pre_req_model() will be necessary.
-        """
-
-        # Setup logging
-        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-
-        # Setup coach
-        self.coach=coach
-
-        # What type of context I'm in? Might be None, "train" or "batch_predict"
-        self.context=None
-
-        self.hyperopt_strategy=hyperopt_strategy
-        if hyperopt_strategy == 'last':
-            self.hyperopt_strategy=self.get_config('HYPEROPT_STRATEGY', default=hyperopt_strategy)
-        self.hyperparam=None
-
-        if trained:
-            # Requested a pre-trained Model. Lets try to load it
-
-            if isinstance(dp, str):
-                dp_id=dp
-            elif issubclass(dp.__class__, DataProvider):
-                dp_id=dp.id
-
-            bob=Model.load(
-                dp_id                           = dp_id,
-                path                            = pre_trained_path,
-                train_session_id                = pre_trained_train_session_id,
-                train_id                        = pre_trained_train_id,
-                train_or_session_id_match_list  = train_or_session_id_match_list,
-                as_of                           = pre_trained_as_of
-            )
-
-            # Transplant loaded object attributes into current object
-            if estimator_only:
-                # Use the DP in RAM, not from pickle
-                if issubclass(dp.__class__, DataProvider):
-                    self.dp        = dp
-                else:
-                    raise Exception("This type of Model loading requires a DataProvider object, not just a string. Use DataProviderFactory.get('model_name') to get it.")
-            else:
-                self.dp            = bob.dp
-
-            # Copy a managed list of attributes from loaded object
-            attributes=[
-                # Train info
-                'train_id',                 'train_session_id',    'estimator',
-                'trained',                  'hyperopt_strategy',   'hyperparam',
-                'train_queries_signatures',
-                
-                # OS environment info
-                'user_name',      'host_name',
-
-                # Code info
-                'git_branch',     'git_commit',
-                
-                # GitHub Actions info
-                'github_actor',   'github_workflow',
-                'github_run_id',  'github_run_number'
-            ]
-            
-            for a in attributes:
-                if hasattr(bob,a):
-                    setattr(self,a,getattr(bob,a))
-
-            del bob
-        else:
-            # Initial and untrained data passed to __init__
-            self.dp                       = dp
-            self.trained                  = trained
-            self.train_id                 = None
-            self.train_session_id         = None
-            self.train_queries_signatures = dict()
-
-            # Store more contextual and informative metadata from the Coach and environment
-            self.user_name         = pwd.getpwuid(os.getuid())[0]
-            self.host_name         = socket.gethostname()
-            self.git_branch        = self.coach.git_repo.head.name if self.coach.git_repo else None
-            self.git_commit        = self.coach.git_repo.head.target.hex if self.coach.git_repo else None
-            self.github_actor      = self.get_config('GITHUB_ACTOR', None)
-            self.github_workflow   = self.get_config('GITHUB_WORKFLOW', None)
-            self.github_run_id     = self.get_config('GITHUB_RUN_ID', None)
-            self.github_run_number = self.get_config('GITHUB_RUN_NUMBER', None)
-            
-            if estimator_class == Estimator:
-                # Got a pure useless Estimator.
-                # To not break things, initialize it without parameters from DP
-                # because, well, they are useless to it.
-                self.estimator     = estimator_class()
-            elif self.dp.hollow:
-                
-                self.estimator     = None
-            else:
-                self.estimator     = estimator_class(**self.dp.get_estimator_parameters())
-                
-        if delayed_prereq_binding is False:
-            self.load_pre_req_model()
 
 
 
@@ -1658,37 +1813,82 @@ class Model(object):
         Log some status to DB training_status table
         """
 
+        base=dict(
+            train_session_id   = self.train_session_id,
+            train_id           = self.train_id,
+            dataprovider_id    = self.dp.id,
+        )
+
+        attr=list()
+
         with self.coach.get_db_connection('xingu').begin() as conn:
             if status == 'train_dataprep_start':
                 # train_dataprep_start is the first step of a training session, so
-                # register also the overall train
-                conn.execute(
-                    self.coach.tables['training'].insert().values(
-                        train_session_id   = self.train_session_id,
-                        train_id           = self.train_id,
-                        dataprovider_id    = self.dp.id,
-                        user_name          = self.user_name,
-                        host_name          = self.host_name,
-                        git_branch         = self.git_branch,
-                        git_commit         = self.git_commit,
-                        github_actor       = self.github_actor,
-                        github_workflow    = self.github_workflow,
-                        github_run_id      = self.github_run_id,
-                        github_run_number  = self.github_run_number,
-                        x_features         = json.dumps(self.dp.get_features_list()),
+                # take the chance to register also the overall train information
+
+                attr += """
+                    user_name
+                    host_name
+                    git_branch
+                    git_commit
+                    github_actor
+                    github_workflow
+                    github_run_id
+                    github_run_number
+                    x_features
+                """.split()
+
+            elif status == 'train_hyperhandle_end':
+                # Capture some information related to hyperparameters optimization and handling
+
+                attr += """
+                    hyperparam
+                """.split()
+
+            elif status == 'train_fit_end':
+                # Capture some information after training the actual estimator
+
+                attr += """
+                    estimator
+                """.split()
+
+            rows=list()
+            for a in attr:
+                value=None
+
+                if a=='x_features' and len(self.dp.get_features_list())>0:
+                    value=json.dumps(self.dp.get_features_list())
+                elif a=='hyperparam':
+                    value=json.dumps(self.hyperparam)
+                elif hasattr(self,a) and getattr(self,a) is not None:
+                    value=str(getattr(self,a))
+                else:
+                    # Do not append to rows
+                    continue
+
+                rows.append(
+                    dict(
+                        **base,
+                        **dict(
+                            attribute  = a,
+                            value      = value
+                        )
                     )
                 )
 
+            if len(rows)>0:
+                conn.execute(self.coach.tables['training_attributes'].insert().values(rows))
+
             conn.execute(
-                self.coach.tables['training_status'].insert().values(
-                    time               = round(datetime.datetime.utcnow().timestamp()),
-                    dataprovider_id    = self.dp.id,
-                    train_session_id   = self.train_session_id,
-                    train_id           = self.train_id,
-                    estimator          = str(self.estimator) if hasattr(self, 'estimator') else None,
-                    hyperparam         = json.dumps(self.hyperparam),
-                    status             = status
-                )
+                self.coach.tables['training_steps'].insert().values([
+                    dict(
+                        **base,
+                        **dict(
+                            time       = round(datetime.datetime.utcnow().timestamp()),
+                            status     = status
+                        )
+                    )
+                ])
             )
 
 
@@ -1702,6 +1902,7 @@ class Model(object):
     def get_full_train_id(self):
         if self.train_session_id:
             return f'{self.train_session_id}∶{self.train_id}'
+            # return f'{self.train_session_id},{self.train_id}'
         else:
             return self.train_id
 
@@ -1728,7 +1929,7 @@ class Model(object):
             self.log('Commit to Git and DVC')
             dvc_shell = []
             file_level_messages = ['File level messages:']
-            
+
             # Template for our multi-line super-detailed commit message
             message='\n'.join([
                 "build(estimator): {dp} • {train_session_id}∶{train_id}",
@@ -1752,7 +1953,7 @@ class Model(object):
                 signature=yaml.dump(self.signature()),
                 file_level_messages='\n'.join(file_level_messages)
             )
-            
+
             dvc_shell.append(f'git commit -F - <<END\n{message}\nEND\necho')
             dvc_shell+=['git push','dvc push']
 
@@ -1762,11 +1963,11 @@ class Model(object):
                     script=';\n'.join(dvc_shell)
                 )
             )
-            
+
             dvc_shell=';\n'.join(dvc_shell)
             if not self.get_config('DRY_RUN', default=False, cast=bool):
                 return_code=os.system(dvc_shell)
-                
+
                 if return_code == 0 and self.coach.git_repo:
                     self.git_artifact_commit=self.coach.git_repo.head.target.hex
 
@@ -1801,7 +2002,7 @@ class Model(object):
 
 
 
-    def data_source_to_data(self, sourceid: str, data_source: dict) -> pd.DataFrame:
+    def data_source_to_data(self, sourceid: str, data_source: dict) -> pandas.DataFrame:
         """
         data_source is one entry of a complex DataProvider.train_data_sources or
         DataProvider.batch_predict_data_sources
@@ -1839,11 +2040,11 @@ class Model(object):
             cypher=hashlib.shake_256()
             cypher.update(data_source['query'].encode('UTF-8'))
             signature=cypher.hexdigest(10)
-            
+
             if self.context not in self.train_queries_signatures:
                 self.train_queries_signatures[self.context]=dict()
             self.train_queries_signatures[self.context][sourceid]=signature
-                
+
             cache_file_name_prefix=cache_template.format(
                 context    = self.context,
                 dp         = self.dp.id,
@@ -1873,7 +2074,7 @@ class Model(object):
                     )
                 )
 
-                df=pd.read_parquet(cache_file)
+                df=pandas.read_parquet(cache_file)
             else:
                 # No cache. Retrieve data from DB and make cache.
 
@@ -1901,7 +2102,7 @@ class Model(object):
             )
 
             # Hit the database
-            df=pd.read_sql_query(
+            df=pandas.read_sql_query(
                 data_source['query'],
                 con=source_db
             )
@@ -1936,9 +2137,14 @@ class Model(object):
 
     def data_sources_to_data(self, data_sources: dict=None) -> dict:
         """
-        Get the DataProvider's train_data_sources and batch_predict_data_sources (passed
-        as data_sources parameters), which contain a collection of SQL queries and their
-        sources, and execute queries in parallel against its specified source DBs.
+        This method is called by Model.fit() right after DataProvider.get_dataset_sources_for_train()
+        or DataProvider.get_dataset_sources_for_batch_predict() returns a dict with queries.
+        These DP methods usually pre-process content of DP.train_data_sources and
+        DP.batch_predict_data_sources. DataProvider´s default implementation simply returns
+        the content of these dicts, without pre-processing.
+
+        This method simply runs in parallel multiple Model.data_source_to_data(), which
+        is the method that really handles all database affairs, parquet cache, file naming etc.
 
         Returns a dict with similar structure containing DataFrames with data returned
         by these queries. Ready to be passed to DataProvider.clean_data().
@@ -1967,9 +2173,9 @@ class Model(object):
 
 
 
-    def trained_str(self):
+    def time_fs_str(time):
         time_tpl='%Y.%m.%d-%H.%M.%S'
-        return self.trained.strftime(time_tpl)
+        return time.strftime(time_tpl)
 
 
 
@@ -1977,43 +2183,43 @@ class Model(object):
         """
         Return a dict version of this object, including only the attributes on
         include and excluding the attributes on exclude.
-        
+
         Used by __getstate__() and signature()
         """
         all_attributes=set(self.__dict__.keys())
         interested=all_attributes
-        
+
         if include:
             interested = all_attributes.intersection(include)
-            
+
         if exclude:
             interested = interested-exclude
-        
+
         return {k:self.__dict__[k] for k in interested}
-    
-    
-    
+
+
+
     def __getstate__(self):
         # Be selective on what to pickle: exclude coach, logger and DataFrames used
         # and generated throughout train and batch predict session.
-        
+
         attributes={
             # DataProvider
             'dp',
-            
+
             # Train info
             'train_session_id',     'train_id',    'trained',
             'hyperopt_strategy',    'hyperparam',  'train_queries_signatures',
 
             # Large stuff
             'estimator',
-            
+
             # OS environment info
             'user_name',            'host_name',
 
             # Code info
             'git_branch',           'git_commit',
-            
+
             # Trained artifacts info
             'git_artifact_commit',
 
@@ -2021,17 +2227,17 @@ class Model(object):
             'github_actor',         'github_workflow',
             'github_run_id',        'github_run_number',
         }
-        
+
         state=self.serialize_to_dict(include=attributes)
 
         if self.get_config('DRY_RUN', default=False, cast=bool):
             # The large estimator object was asked to be excluded (for dev
             # purposes), so put an empty similar object inplace.
             state['estimator']=type(self.estimator)()
-            
+
         return state
-        
-    
+
+
 
     def signature(self) -> dict:
         """
@@ -2055,7 +2261,7 @@ class Model(object):
             'github_actor',         'github_workflow',
             'github_run_id',        'github_run_number',
         }
-        
+
         signature=self.serialize_to_dict(include=attributes)
         signature['dataprovider_id']=self.dp.id
 
@@ -2064,11 +2270,11 @@ class Model(object):
                 dp: self.dp.pre_req_model[dp].signature()
                     for dp in self.dp.pre_req_model
             }
-        
-        return signature
-    
 
-    
+        return signature
+
+
+
     def __repr__(self):
         template=(
             'Model(' +

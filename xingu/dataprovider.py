@@ -6,7 +6,7 @@ import pandas as pd
 
 from typing import Tuple
 
-
+from .estimator import Estimator
 
 class DataProvider(object):
 
@@ -38,33 +38,45 @@ class DataProvider(object):
     train_split_days:              int    = 150
     date_column_name:              str    = 'date'
 
-    estimator_bagging_size:        int    = 20
-    estimator_hyperparams:         dict   = None
-    
     ###########################################################
     ###
-    ###   Attributes for the purpose of collecting metrics
+    ###   Attributes for the Estimator
     ###
+    ###   See methods:
+    ###     get_estimator_class()
+    ###     get_estimator_optimization_search_space()
+    ###     get_estimator_parameters()
+    ###     get_estimator_hyperparameters()
+    ###
+    # The (hyper)params is what a SciKit estimator gets in its
+    # __init__() method. They are of 2 types:
+    #
+    #  - estimation quality parameters (those that are tunned and are commonly called hyper-parameters)
+    #  - operational parameters (control operation, verbosity etc)
+    #
+    # estimator_hyperparams + estimator_params is what is used to initialize the object.
+    # We are separating them here because estimator_hyperparams will be optimized while
+    # estimator_params are kind of fixed.
+    #
     ###########################################################
-    
-    QUANTILES = [
-        ('p_05',0.05),
-        ('p_10',0.1),
-        ('p_20',0.2),
-        ('p_30',0.3),
-        ('p_40',0.4),
-        ('p_50',0.5),
-        ('p_60',0.6),
-        ('p_70',0.7),
-        ('p_80',0.8),
-        ('p_90',0.9),
-        ('p_95',0.95)
-    ]
 
-    LOWER_BOUND     = "p_20"
-    UPPER_BOUND     = "p_80"
-    POINT_ESTIMATE  = "p_50"
-    
+    estimator_class:                      type   = Estimator
+    estimator_hyperparams:                dict   = None
+    estimator_params:                     dict   = None
+    estimator_hyperparam_search_space:    dict   = None
+
+
+    ###########################################################
+    ###
+    ###   Control batch predict and metrics computers.
+    ###
+    ###########################################################
+
+    batch_predict_strategy = dict(
+        method='predict',
+        params=dict()
+    )
+
     ###########################################################
     ###
     ###   Methods that need specialized implementation on
@@ -143,7 +155,44 @@ class DataProvider(object):
         return data
 
 
+    
+    def get_estimator_class(self) -> type:
+        return self.estimator_class
 
+    
+    
+    def get_estimator_optimization_search_space(self) -> dict:
+        if hasattr(self,'estimator_hyperparam_search_space'):
+            return self.estimator_hyperparam_search_space
+        else:
+            return None
+
+    
+    
+    def get_estimator_parameters(self) -> dict:
+        """
+        Return a dict with parameters expected by xingu.Estimator::__init__()
+        A xingu.Estimator() class and derivates has the `hyperparams` attribute
+        which is the list of parameters that is passed to self.estimator_class()::__init__()
+
+        Derived classes of this DP might extend this method to add more initialization
+        items to the used xingu.Estimator()
+        """
+        return dict(
+            hyperparams=self.get_estimator_hyperparameters()
+        )
+
+
+
+    def get_estimator_hyperparameters(self) -> dict:
+        # Must return a dict with parameters expected by self.estimator_class()::__init__()
+        return dict(
+            **self.estimator_hyperparams,
+            **self.estimator_params
+        )
+
+
+        
     def post_process_after_train(self, model):
         """
         Called after estimator was trained but before PKL is saved or metrics computed.
@@ -162,9 +211,33 @@ class DataProvider(object):
 
 
 
-    def pre_process_for_pred_dist(self, X: pd.DataFrame, model) -> pd.DataFrame:
+    def pre_process_for_generic_predict(self, X: pd.DataFrame, model) -> pd.DataFrame:
         """
-        Called by Model.pred_dist() right before X is passed to its internal
+        Virtual method to be implemented in concrete DPs in case your pre-processing is
+        the same for predict() and predict_proba().
+        
+        If pre-processing is not the same for these methods, implement both
+        pre_process_for_predict() and pre_process_for_predict_proba()
+        """
+        return X
+
+
+
+    def post_process_after_generic_predict(self, X: pd.DataFrame, Y_pred: pd.DataFrame, model) -> pd.DataFrame:
+        """
+        Virtual method to be implemented in concrete DPs in case your post-processing is
+        the same for predict() and predict_proba().
+        
+        If post-processing is not the same for these methods, implement both
+        post_process_after_predict() and post_process_after_predict_proba()
+        """
+        return Y_pred
+
+    
+    
+    def pre_process_for_predict(self, X: pd.DataFrame, model) -> pd.DataFrame:
+        """
+        Called by Model.generic_predict() right before X is passed to its internal
         estimator to compute Ŷ.
         
         Your implementation may modify X completely, and what you return here
@@ -172,11 +245,11 @@ class DataProvider(object):
         
         The abstract implementation here does nothing.
         """
-        return X
+        return self.pre_process_for_generic_predict(X,model)
     
     
     
-    def post_process_after_pred_dist(self, X: pd.DataFrame, Y_pred: pd.DataFrame, model) -> pd.DataFrame:
+    def post_process_after_predict(self, X: pd.DataFrame, Y_pred: pd.DataFrame, model) -> pd.DataFrame:
         """
         Called by Model.pred_dist() right after Ŷ (Y_pred) is computed.
         
@@ -187,13 +260,13 @@ class DataProvider(object):
         
         The abstract implementation here does nothing.
         """
-        return Y_pred
+        return self.post_process_after_generic_predict(X,Y_pred,model)
+
+
     
-    
-    
-    def pre_process_for_pred_quantiles(self, X: pd.DataFrame, model) -> pd.DataFrame:
+    def pre_process_for_predict_proba(self, X: pd.DataFrame, model) -> pd.DataFrame:
         """
-        Called by Model.pred_dist() right before X is passed to its internal
+        Called by Model.generic_predict() right before X is passed to its internal
         estimator to compute Ŷ.
         
         Your implementation may modify X completely, and what you return here
@@ -201,22 +274,24 @@ class DataProvider(object):
         
         The abstract implementation here does nothing.
         """
-        return X
+        return self.pre_process_for_generic_predict(X,model)
     
     
     
-    def post_process_after_pred_quantiles(self, X: pd.DataFrame, Y_pred: pd.DataFrame, model) -> pd.DataFrame:
+    def post_process_after_predict_proba(self, X: pd.DataFrame, Y_pred: pd.DataFrame, model) -> pd.DataFrame:
         """
         Called by Model.pred_dist() right after Ŷ (Y_pred) is computed.
         
         X is whatever you returned in pre_process_for_pred_dist().
         
         Your implementation may modify Y_pred completely, and what you return here
-        will be returned to Model‘s caller.
+        will be returned to Model caller.
         
         The abstract implementation here does nothing.
         """
-        return Y_pred
+        return self.post_process_after_generic_predict(X,Y_pred,model)
+    
+    
 
     
     
@@ -299,25 +374,7 @@ class DataProvider(object):
     def get_target(self) -> str:
         return self.y
 
-
-
-    def get_estimator_parameters(self) -> dict:
-        # Method optimized for Loft usage of NGBoost.
-        # Must return a dict with parameters expected by NGBClassic::__init__()
-
-        return dict(
-            bagging_size=self.estimator_bagging_size
-        )
-
-
-
-    def get_estimator_hyperparameters(self) -> dict:
-        if hasattr(self,'estimator_hyperparams'):
-            return self.estimator_hyperparams
-        else:
-            return None
-
-
+    
 
     def __repr__(self) -> str:
         return '{klass}(id={id})'.format(id=self.id, klass=type(self).__name__)
@@ -428,15 +485,16 @@ class DataProvider(object):
     ####################################################################
 
 
-    def get_metrics_computers(self, type: str='valuation') -> list:
+    def get_metrics_computers(self, type: str='estimation') -> list:
         """
         Return a list of member functions that can compute metrics for estimator outputs.
 
         Current types that will be scanned are:
 
         • trainsets_model
+        • batch_model
         • global_model
-        • valuation
+        • estimation
         """
 
 
@@ -450,18 +508,43 @@ class DataProvider(object):
 
 
 
+    def get_plot_renderers(self, type: str='global_model') -> list:
+        """
+        Return a list of member functions that can compute metrics for estimator outputs.
+
+        Current types that will be scanned are:
+
+        • trainsets_model
+        • batch_model
+        • global_model
+        """
+
+
+        methods=[]
+
+        for method in inspect.getmembers(self, predicate=inspect.ismethod):
+            if 'render_' + type + '_plots_' in method[0]:
+                methods.append(method[1])
+
+        return methods
+
+
+
     def __getstate__(self):
         return dict(
             x_features                      = self.x_features,
             x_estimator_features            = self.x_estimator_features,
             y                               = self.y,
+            estimator_class                 = self.estimator_class,
+            estimator_bagging_size          = self.estimator_bagging_size,
+            estimator_hyperparams           = self.estimator_hyperparams,
+            estimator_hyperparam_search_space = self.estimator_hyperparam_search_space,
             train_dataset_sources           = self.train_dataset_sources,
             batch_predict_dataset_sources   = self.batch_predict_dataset_sources,
             random_state                    = self.random_state,
             test_size                       = self.test_size,
             val_size                        = self.val_size,
             train_split_days                = self.train_split_days,
-            estimator_bagging_size          = self.estimator_bagging_size,
             date_column_name                = self.date_column_name,
             hollow                          = self.hollow
         )
