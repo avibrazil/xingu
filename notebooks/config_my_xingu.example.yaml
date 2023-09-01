@@ -1,0 +1,130 @@
+---
+
+# Configuring Xingu is a matter of putting in place right values in the right environment variables
+#
+# This YAML file is currently unused and was created only as a study
+#
+# Avi Alkalay
+# 2023-09-01
+
+building blocks:
+      basics: &basics
+            name: Basic definitions
+            description: Basic definitions used everywhere
+            env:
+                PROJECT_HOME: .
+                DATALAKE_ATHENA_URL: awsathena+rest://athena.us-east-1.amazonaws.com:443/my_db?work_group=some_workgroup&compression=snappy
+                DATALAKE_DATABRICKS_URL: databricks+connector://token:dapi170...1a3@dbc-da9-ab6.cloud.databricks.com/default?http_path=/sql/1.0/endpoints/b4...d3e
+
+      dvc: &dvc
+            name: DVC definitions
+            description: Activate DVC commits
+            env:
+                DVC_QUERY_CACHE_PATH: data
+                DVC_TRAINED_MODELS_PATH: models
+                
+                
+profiles:
+      alpha_explorer: &alpha_explorer
+            <<: *basics
+            name: Alpha Explorer
+            description: Use Xingu self contained in a laptop without externaal DB or storage
+            env:
+                DEBUG: 'true'
+                QUERY_CACHE_PATH: data
+                TRAINED_MODELS_PATH: models                
+                XINGU_DB_URL: sqlite:///xingu.db?check_same_thread=False
+
+      beta_explorer: &beta_explorer
+            <<: *basics
+            <<: *dvc
+            name: Beta Explorer
+            description: Use Xingu with the Staging infrastructure and commit to Git and DVC
+            env:
+                COMMIT_CURRENTS: 'true'
+                DEBUG: 'true'
+                XINGU_DB_URL: postgresql+psycopg2://{%AWS_PARAM:staging-user%}:{%AWS_SECRET:staging-rds-secret%}@{%AWS_PARAM:staging-url%}/{%AWS_PARAM:staging-database-name%}
+                TRAINED_MODELS_PATH: s3://{%AWS_PARAM:staging-bucket%}/trained-models
+                
+      production:
+            <<: *basics
+            <<: *dvc
+            name: Production
+            description: Use Xingu with the Production infrastructure and commit to Git and DVC
+            env:
+                COMMIT_CURRENTS: 'true'
+                DEBUG: 'false'
+                XINGU_DB_URL: postgresql+psycopg2://{%AWS_PARAM:production-user%}:{%AWS_SECRET:production-rds-secret%}@{%AWS_PARAM:production-url%}/{%AWS_PARAM:production-database-name%}
+                TRAINED_MODELS_PATH: s3://{%AWS_PARAM:production-bucket%}/trained-models
+                
+      staging:
+            <<: *beta_explorer
+            <<: *dvc
+            name: Staging
+            description: Use Xingu with the Staging infrastructure and commit to Git and DVC
+            env:
+                COMMIT_CURRENTS: 'true'
+                DEBUG: 'true'
+
+      do_all_parallel: &do_all_parallel
+            name: Do all in parallel
+            description: |
+                Everyday train and batch predict in parallel with hyper-parameter
+                optimization, metrics computation and PKL save.
+                Parallelism is capped
+            env:
+                TRAIN: 'true'
+                HYPEROPT_STRATEGY: self
+                POST_PROCESS: 'true'  # save PKL, compute metrics etc
+                BATCH_PREDICT: 'true'
+                PARALLEL_ESTIMATORS_MAX_WORKERS: '0'
+                PARALLEL_HYPEROPT_MAX_WORKERS: '6'
+                PARALLEL_POST_PROCESS_MAX_WORKERS: '3'
+                PARALLEL_TRAIN_MAX_WORKERS: '3'
+
+      do_all_sequential:
+            <<: *do_all_parallel
+            name: Do all sequentially
+            description: Everyday train and batch predict with hyper-parameter optimization, metrics computation and PKL save
+            env:
+                PARALLEL_ESTIMATORS_MAX_WORKERS: '1'
+                PARALLEL_HYPEROPT_MAX_WORKERS: '1'
+                PARALLEL_POST_PROCESS_MAX_WORKERS: '1'
+                PARALLEL_TRAIN_MAX_WORKERS: '1'
+                
+      hyper_optimize_only:
+            name: Hyper-optimize only
+            description: Only hyper-optimize with max parallelism, no train, no batch-predict
+            env:
+                TRAIN: 'true'
+                HYPEROPT_STRATEGY: self
+                POST_PROCESS: 'false'
+                BATCH_PREDICT: 'false'
+                PARALLEL_ESTIMATORS_MAX_WORKERS: '0'
+                PARALLEL_HYPEROPT_MAX_WORKERS: '0'
+                PARALLEL_TRAIN_MAX_WORKERS: '1'
+                
+                
+      train_and_predict: &train_and_predict
+            name: Train and Predict
+            description: Everyday train and batch predict in parallel without hyper-parameter optimization
+            env:
+                TRAIN: 'true'
+                HYPEROPT_STRATEGY: last
+                POST_PROCESS: 'true'
+                BATCH_PREDICT: 'true'
+                PARALLEL_ESTIMATORS_MAX_WORKERS: '0'
+                PARALLEL_POST_PROCESS_MAX_WORKERS: '0'
+                PARALLEL_TRAIN_MAX_WORKERS: '0'
+
+                
+      predict_only:
+            <<: *do_all_parallel
+            name: Predict only
+            description: Use pre-trained estimators to batch predict and metrics computation only
+            env:
+                TRAIN: 'false'
+                POST_PROCESS: 'false'
+                BATCH_PREDICT: 'true'
+                PARALLEL_POST_PROCESS_MAX_WORKERS: '0'
+                
