@@ -1,5 +1,4 @@
 import sys
-import configparser
 import pathlib
 import pkgutil
 import importlib
@@ -8,7 +7,7 @@ import logging
 
 from . import DataProvider
 from . import ConfigManager
-from . import dataproviders as dp
+# from . import dataproviders as dp
 
 
 
@@ -56,10 +55,9 @@ class DataProviderFactory:
             self.providers_list = [i.strip() for i in self.providers_list.split(',')]
 
 
-        # If we still don't have a path to work with, use bundled
-        # xingu.dataproviders module (imported as dp)
+        # If we still don't have a path to work with, use current folder
         if self.providers_folder is None:
-            self.providers_folder = str(pathlib.Path(dp.__file__).parent)
+            self.providers_folder = str(pathlib.Path('.'))
 
         self.logger.info("Folder to search DataProviders: {}".format(self.providers_folder))
 

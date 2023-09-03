@@ -20,6 +20,8 @@ Check your project has the necessary files:
 $ find
 dataproviders/
 dataproviders/my_dataprovider.py
+estimators/
+estimators/myrandomestimator.py
 ```
 Train with DataProviders `id_of_my_dataprovider1` and `id_of_my_dataprovider2`, both defined in `dataproviders/my_dataprovider.py`:
 ```shell

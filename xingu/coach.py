@@ -864,8 +864,6 @@ class Coach:
         if nickname not in self.databases:
             raise NotImplementedError(f'Coach knows nothing about a datasource with nickname «{nickname}»')
 
-        import pyathena.pandas.cursor
-
         engine_config_sets=dict(
             # Documentation for all these SQLAlchemy pool control
             # parameters: https://docs.sqlalchemy.org/en/14/core/engines.html#engine-creation-api
@@ -907,17 +905,20 @@ class Coach:
                 # Debug connection and all queries
                 # echo              = True
             ),
-            athena=dict(
-                connect_args=dict(
-                    cursor_class=pyathena.pandas.cursor.PandasCursor
-                )
-            )
         )
 
         if 'conn' not in self.databases[nickname]:
             # Connection to this database not open yet. Just do it.
 
             url = self.get_config(self.databases[nickname]['env'])
+
+            if 'athena' in url:
+                import pyathena.pandas.cursor
+                engine_config_sets['athena']=dict(
+                    connect_args=dict(
+                        cursor_class=pyathena.pandas.cursor.PandasCursor
+                    )
+                )
 
             engine_config=engine_config_sets['DEFAULT'].copy()
 

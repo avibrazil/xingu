@@ -1,6 +1,6 @@
 [project]
 name = "xingu"
-version = '1.0.1'
+version = '1.0.2'
 description = "Automated ML model training"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -17,7 +17,14 @@ keywords = [
 dependencies = [
     "pandas>=1.5",
     "python-decouple",
-    "boto3"
+    "SQLAlchemy < 2",
+    "tabulate",
+    "pygit2",
+    "randomname",
+    "pyyaml",
+    "s3path",
+    "smart_open",
+    "scikit-learn",
 ]
 
 # dynamic = [
