@@ -1,4 +1,4 @@
-__all__=['Model', 'Coach', 'Estimator', 'DataProviderFactory', 'DataProvider', 'ConfigManager']
+__all__ = ['Model', 'Coach', 'Estimator', 'DataProviderFactory', 'DataProvider', 'ConfigManager']
 
 from .dataprovider          import DataProvider
 from .config_manager        import ConfigManager

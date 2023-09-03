@@ -1,0 +1,42 @@
+[project]
+name = "xingu"
+version = '1.0.1'
+description = "Automated ML model training"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+authors = [
+    { name = "Avi Alkalay", email = "avi@unix.sh" },
+]
+
+keywords = [
+    "mlengineering",
+    "xingu",
+]
+
+dependencies = [
+    "pandas>=1.5",
+    "python-decouple",
+    "boto3"
+]
+
+# dynamic = [
+#     "version",
+# ]
+
+[project.scripts]
+xingu = "xingu.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/avibrazil/xingu"
+Source = "https://github.com/avibrazil/xingu"
+Issues = "https://github.com/avibrazil/xingu/issues/new/choose"
+Pypi = "https://pypi.org/project/xingu"
+
+[project.optional-dependencies]
+docs = [
+    "sklearn",
+]
+
+[tool.setuptools.package-dir]
+xingu = "xingu"

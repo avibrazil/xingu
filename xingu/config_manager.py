@@ -1,6 +1,5 @@
 import os
 import decouple
-import boto3
 import re
 
 
@@ -32,9 +31,6 @@ class ConfigManager(object):
 
 
     undefined       = decouple.undefined
-
-    parameter_store = boto3.client('ssm')
-    secrets_manager = boto3.client('secretsmanager')
 
     cache           = {}
 
@@ -73,6 +69,11 @@ class ConfigManager(object):
             else:
                 return cast(ConfigManager.cache[config_item])
         elif config_item.startswith(('AWS_PARAM:','AWS_SECRET:')):
+
+            import boto3
+            self.parameter_store = boto3.client('ssm')
+            self.secrets_manager = boto3.client('secretsmanager')
+
             aws_item=config_item.split(':')[1]
 
             try:
