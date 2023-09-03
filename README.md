@@ -9,6 +9,28 @@ a product, use Xingu proposed classes to organize interactions with DB
 training algorithm, general and custom metrics computation, estimation
 post-processing.
 
+## Install
+```shell
+pip install https://github.com/avibrazil/xingu
+```
+
+## Use to Train a Model
+Check your project has the necessary files:
+```shell
+$ find
+dataproviders/
+dataproviders/my_dataprovider.py
+```
+Train with DataProviders `id_of_my_dataprovider1` and `id_of_my_dataprovider2`, both defined in `dataproviders/my_dataprovider.py`:
+```shell
+$ xingu \
+    --dps id_of_my_dataprovider1,id_of_my_dataprovider2 \
+    --datalake-athena "awsathena+rest://athena.us..." \
+    --query-cache-path data \
+    --trained-models-path models \
+    --debug
+```
+
 ## Procedures defined by Xingu
 
 Steps marked with 💫 are were you put your code. All the rest is Xingu boilerplate code ready to use.
