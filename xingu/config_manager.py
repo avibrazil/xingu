@@ -3,9 +3,19 @@ import decouple
 import re
 
 
-class ConfigManager(object):
+# Singleton implementation from https://stackoverflow.com/questions/6760685/creating-a-singleton-in-python
+# method 3
+class Singleton(type):
+    _instances = {}
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
+    
+
+class ConfigManager(object, metaclass=Singleton):
     """
-    A pseudo-singleton class for all Xingu configuration affairs.
+    A singleton class for all Xingu configuration affairs.
 
     It is pseudo-singleton because this is just emulated as all-static methods class. So
     you are not supposed to instantiate object of this class, just use its methods
@@ -35,8 +45,12 @@ class ConfigManager(object):
     cache           = {}
 
 
+    def __init__(self, envfile='./.env'):
+        self.config=decouple.Config(decouple.RepositoryEnv(envfile))
 
-    def get(config_item: str, default=decouple.undefined, cast=decouple.undefined, resolve=True, value_only=True):
+
+
+    def get(self, config_item: str, default=decouple.undefined, cast=decouple.undefined, resolve=True, value_only=True):
         """
         Convert an environment variable (or any repository suported by decouple module)
         or AWS Parameter or AWS Secret into its value.
@@ -63,30 +77,34 @@ class ConfigManager(object):
         is only useful in debug and development scenarios.
         """
 
-        if config_item in ConfigManager.cache:
+        if config_item in self.cache:
             if cast==decouple.undefined:
-                return ConfigManager.cache[config_item]
+                return self.cache[config_item]
             else:
-                return cast(ConfigManager.cache[config_item])
+                return cast(self.cache[config_item])
+            
         elif config_item.startswith(('AWS_PARAM:','AWS_SECRET:')):
-
             import boto3
-            self.parameter_store = boto3.client('ssm')
-            self.secrets_manager = boto3.client('secretsmanager')
+            
+            if not hasattr(self,'parameter_store'):
+                self.parameter_store = boto3.client('ssm')
+                
+            if not hasattr(self,'secrets_manager'):
+                self.secrets_manager = boto3.client('secretsmanager')
 
             aws_item=config_item.split(':')[1]
 
             try:
                 if config_item.startswith('AWS_PARAM:'):
-                    value=ConfigManager.parameter_store.get_parameter(Name=aws_item)
+                    value=self.parameter_store.get_parameter(Name=aws_item)
                     if value_only: return ConfigManager.set_cache(config_item,value['Parameter']['Value'])
                 elif config_item.startswith('AWS_SECRET:'):
-                    value=ConfigManager.secrets_manager.get_secret_value(SecretId=aws_item)
+                    value=self.secrets_manager.get_secret_value(SecretId=aws_item)
                     if value_only: return ConfigManager.set_cache(config_item,value['SecretString'])
-                return ConfigManager.set_cache(config_item,value)
+                return self.set_cache(config_item,value)
             except (
-                ConfigManager.parameter_store.exceptions.ParameterNotFound,
-                ConfigManager.secrets_manager.exceptions.ResourceNotFoundException
+                self.parameter_store.exceptions.ParameterNotFound,
+                self.secrets_manager.exceptions.ResourceNotFoundException
             ) as e:
                 if default!=ConfigManager.undefined:
                     return default
@@ -96,9 +114,7 @@ class ConfigManager(object):
                     )
         else:
             # Get the value of this config item from environment
-            value=decouple.config(config_item, default=default, cast=cast)
-
-#             print('ConfigManager: ' + str(type(value)))
+            value=self.config(config_item, default=default, cast=cast)
 
             if value is not None and isinstance(value, str) and resolve:
                 if '{%' in value:
@@ -111,32 +127,32 @@ class ConfigManager(object):
                         ## Iterate over each variable/placeholder and replace by its value
                         value=value.replace(
                             p,
-                            ConfigManager.get(
+                            self.get(
                                 re.sub(r'\{\%|\%\}','',p).strip(),
                                 cast=cast
                             ),
                         )
                 elif value.startswith(('AWS_PARAM:','AWS_SECRET:')):
                     # Recursively handle AWS parameters ans secrets
-                    value=ConfigManager.get(value, cast=cast)
+                    value=self.get(value, cast=cast)
 
             if value == default:
                 return value
             else:
-                return ConfigManager.set_cache(config_item,value)
+                return self.set_cache(config_item,value)
 
 
 
-    def set_cache(config_item,value):
-        if value == ConfigManager.undefined and config_item in ConfigManager.cache:
-            del ConfigManager.cache[config_item]
+    def set_cache(self, config_item, value):
+        if value == ConfigManager.undefined and config_item in self.cache:
+            del self.cache[config_item]
         else:
-            ConfigManager.cache[config_item]=value
+            self.cache[config_item]=value
         return value
 
 
 
-    def set(config_item, value=undefined):
+    def set(self, config_item, value=undefined):
         """
         Set environment variables.
 
@@ -150,10 +166,10 @@ class ConfigManager(object):
         """
         if isinstance(config_item,dict):
             for c in config_item.keys():
-                ConfigManager.set(c,config_item[c])
+                self.set(c,config_item[c])
         elif isinstance(config_item,list) or isinstance(config_item,tuple):
             for i in config_item:
-                ConfigManager.set(i,value)
+                self.set(i,value)
         elif isinstance(config_item,str):
 #             ConfigManager.set_cache(config_item,value)
             if value == ConfigManager.undefined:
@@ -166,5 +182,3 @@ class ConfigManager(object):
                     os.environ[config_item]=''
                 else:
                     os.environ[config_item]=str(value)
-
-

@@ -70,6 +70,8 @@ class Coach:
 
 
     def __init__(self, dp_factory: DataProviderFactory = DataProviderFactory()):
+        self.config=ConfigManager()
+        
         # Setup logging
         self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
@@ -109,11 +111,11 @@ class Coach:
 #         else:
         if default==ConfigManager.undefined:
             if config_item in self.defaults:
-                return ConfigManager.get(config_item, default=self.defaults[config_item], cast=cast)
+                return self.config.get(config_item, default=self.defaults[config_item], cast=cast)
             else:
-                return ConfigManager.get(config_item, cast=cast)
+                return self.config.get(config_item, cast=cast)
         else:
-            return ConfigManager.get(config_item, default=default, cast=cast)
+            return self.config.get(config_item, default=default, cast=cast)
 
 
 

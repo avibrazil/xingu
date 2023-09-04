@@ -39,12 +39,12 @@ class DataProviderFactory:
         if providers_folder is not None:
             self.providers_folder = providers_folder
         else:
-            self.providers_folder = ConfigManager.get('DATAPROVIDER_FOLDER', default=None)
+            self.providers_folder = ConfigManager().get('DATAPROVIDER_FOLDER', default=None)
 
         if providers_list is not None:
             self.providers_list = providers_list
         else:
-            self.providers_list = ConfigManager.get('DATAPROVIDER_LIST', default=None)
+            self.providers_list = ConfigManager().get('DATAPROVIDER_LIST', default=None)
 
         if isinstance(self.providers_list, list):
             # Remove useless elements

@@ -1133,7 +1133,7 @@ class Model(object):
 
         plots = self.render_model_plots(channel)
 
-        if len(plots.keys())>0:
+        if plots is not None and len(plots.keys())>0:
             plot_template="{dp} • {time} • {full_train_id} • {part} • {signature}.{ext}"
 
             formats = self.get_config('PLOTS_FORMAT', default='svg')
