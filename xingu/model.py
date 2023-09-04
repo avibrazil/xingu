@@ -1611,7 +1611,7 @@ class Model(object):
         if path:
             resolved_path=path
         else:
-            resolved_path=ConfigManager.get('TRAINED_MODELS_PATH', default=path)
+            resolved_path=ConfigManager().get('TRAINED_MODELS_PATH', default=path)
 
         if not resolved_path:
             raise Exception("Don’t know where to load pre-trained models from. Set TRAINED_MODELS_PATH.")
@@ -1789,7 +1789,7 @@ class Model(object):
         """
 
         if self.coach is None:
-            return ConfigManager.get(config_item, default=default, cast=cast)
+            return ConfigManager().get(config_item, default=default, cast=cast)
         else:
             return self.coach.get_config(config_item, default=default, cast=cast)
 
