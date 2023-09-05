@@ -2002,7 +2002,7 @@ class Model(object):
 
 
 
-    def data_source_to_data_from_url(self, url: str, params: dict) -> pandas.DataFrame:
+    def data_source_to_data_from_url(self, url: str, params: dict=dict()) -> pandas.DataFrame:
         """
         The url parameters points to a local file, http://... or s3://...
         resource.
@@ -2106,7 +2106,7 @@ class Model(object):
 
         # Iterate over valid keys until we get something
         valid_keys = ['query', 'url']
-        for key_type in valid:
+        for key_type in valid_keys:
             query_text = data_source.get(key_type)
             if query_text is not None:
                 break
@@ -2157,7 +2157,7 @@ class Model(object):
 
                 self.log(
                     'No cache for «{source}» on {context}, looked for in file {cache_file}. Retrieving data from remote data source.'.format(
-                        source      = data_source['source'],
+                        source      = sourceid,
                         cache_file  = cache_file,
                         context     = self.context
                     )
@@ -2175,7 +2175,7 @@ class Model(object):
             elif key_type == 'url':
                 df = self.data_source_to_data_from_url(
                     query_text,
-                    **data_source['params']
+                    **data_source['params'] if 'params' in data_source else dict()
                 )
 
             if cache_path:

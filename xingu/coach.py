@@ -56,27 +56,15 @@ class Coach:
     )
 
 
-    databases=dict(
-        xingu=dict(
-            env="XINGU_DB_URL",
-        ),
-        datalake_athena=dict(
-            env="DATALAKE_ATHENA_URL",
-        ),
-        datalake_databricks=dict(
-            env="DATALAKE_DATABRICKS_URL",
-        ),
-    )
-
 
     def __init__(self, dp_factory: DataProviderFactory = DataProviderFactory()):
         self.config=ConfigManager()
-        
+
         # Setup logging
         self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
         # Turn attribute `databases` into a private copy
-        self.databases=copy.deepcopy(self.databases)
+        self.databases=dict()
 
         try:
             self.git_repo=pygit2.Repository(self.get_config('PROJECT_HOME'))
@@ -92,8 +80,6 @@ class Coach:
         # Database initialization block
         self.tables={}
         self.xingu_db=None
-        self.get_db_connection('xingu')
-#         self.get_units_db()
         self.init_db()
 
         # Flow control on queues and parallelism
@@ -863,8 +849,8 @@ class Coach:
 
 
     def get_db_connection(self, nickname='xingu'):
-        # if nickname not in self.databases:
-        #     raise NotImplementedError(f'Coach knows nothing about a datasource with nickname «{nickname}»')
+        if nickname in self.databases:
+            return self.databases[nickname]['conn']
 
         engine_config_sets=dict(
             # Documentation for all these SQLAlchemy pool control
@@ -931,7 +917,7 @@ class Coach:
 
             current=self.databases[databases[i]]
 
-            if 'athena' in url:
+            if 'athena' in current['url']:
                 # Set some defaults for AWS Athena in here to avoid global
                 # module requirements
                 import pyathena.pandas.cursor
@@ -994,7 +980,7 @@ class Coach:
 
         self.xingu_db_metadata = sqlalchemy.MetaData(bind=self.get_db_connection('xingu'))
 
-        self.xingu_db_table_prefix=self.get_config('XINGU_DB_TABLE_PREFIX')
+        self.xingu_db_table_prefix=self.get_config('XINGU_DB_TABLE_PREFIX','')
 
         table_name='training'
         self.tables[table_name] = Table(
@@ -1015,16 +1001,6 @@ class Coach:
                 primary_key=True,
                 nullable=False
             ),
-#             Column('user_name', String),
-#             Column('host_name', String),
-#             Column('git_branch', String),
-#             Column('git_commit', String),
-#             Column('github_actor', String),      # GITHUB_ACTOR
-#             Column('github_workflow', String),   # GITHUB_WORKFLOW
-#             Column('github_run_id', String),     # GITHUB_RUN_ID
-#             Column('github_run_number', String), # GITHUB_RUN_NUMBER
-#             Column('x_features', String),
-#             Column('dataprovider_ver', String),
 
             UniqueConstraint(
                 'train_session_id',
@@ -1130,17 +1106,14 @@ class Coach:
             self.xingu_db_metadata,
             Column(
                 'dataprovider_id', String,
-#                 primary_key=True,
                 nullable=False
             ),
             Column(
                 'train_session_id', String,
-#                 primary_key=True,
                 nullable=False
             ),
             Column(
                 'train_id', String,
-#                 primary_key=True,
                 nullable=False
             ),
             Column(
@@ -1149,7 +1122,6 @@ class Coach:
             ),
             Column(
                 'index', String,
-#                 primary_key=True,
                 nullable=False
             ),
             Column('target', Float),

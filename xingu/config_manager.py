@@ -46,7 +46,13 @@ class ConfigManager(object, metaclass=Singleton):
 
 
     def __init__(self, envfile='./.env'):
-        self.config=decouple.Config(decouple.RepositoryEnv(envfile))
+        try:
+            self.config=decouple.Config(decouple.RepositoryEnv(envfile))
+        except FileNotFoundError as e:
+            if envfile == './.env':
+                self.config = decouple.config
+            else:
+                raise e
 
 
 
