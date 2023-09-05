@@ -2002,6 +2002,59 @@ class Model(object):
 
 
 
+    def data_source_to_data_from_url(self, url: str, params: dict) -> pandas.DataFrame:
+        """
+        The url parameters points to a local file, http://... or s3://...
+        resource.
+
+        This method will use pandas.read_csv(), pandas.read_parquet() or
+        pandas.read_json() depending on text found in the URL.
+
+        The params dict will be passed to the pandas method and might have any
+        parameters accepted by these methods.
+        """
+        token_map=dict(
+            json     = pandas.read_json,
+            parquet  = pandas.read_parquet,
+        )
+
+        # Find correct Pandas method we´ll use.
+        # Start with a default to pandas.read_csv()
+        pandas_method = pandas.read_csv
+        for token in token_map.keys():
+            if token in url:
+                pandas_method = token_map[token]
+                break
+
+        self.log(
+            level=logging.DEBUG,
+            message='Using {method} to retrieve dataset from {url}'.format(
+                url = url,
+                method = pandas_method
+            )
+        )
+
+        return pandas_method(url, **params)
+
+
+
+    def data_source_to_data_from_query(self, query: str, con_nickname: str) -> pandas.DataFrame:
+        self.log(
+            level=logging.DEBUG,
+            message='Retrieving dataset from «{source}»:\n{query}'.format(
+                source     = con_nickname,
+                query      = textwrap.indent(textwrap.dedent(query),'   ')
+            )
+        )
+
+        # Hit the database
+        return pandas.read_sql_query(
+            sql = query,
+            con = self.coach.get_db_connection(con_nickname)
+        )
+
+
+
     def data_source_to_data(self, sourceid: str, data_source: dict) -> pandas.DataFrame:
         """
         data_source is one entry of a complex DataProvider.train_data_sources or
@@ -2028,10 +2081,10 @@ class Model(object):
         """
         - Check for cache path
         - Compute unique hash for datasource
-        - Check if cache exists, read_parquet()
-        - If no cache, get data source (URL, DB etc)
+        - If cache exists, read_parquet()
+        - If no cache, get data from source (URL, DB etc)
         - Save cache with unique hash
-        - Return dataframe
+        - Return a dataframe
         """
 
         # Initialize to a non-sense value what we are going to return
@@ -2051,12 +2104,19 @@ class Model(object):
 
         cache_template="cache • {context} • {dp} • {sourceid} • {signature}"
 
+        # Iterate over valid keys until we get something
+        valid_keys = ['query', 'url']
+        for key_type in valid:
+            query_text = data_source.get(key_type)
+            if query_text is not None:
+                break
+
         # Compute a unique hash for the SQL query text, for cache management purposes
         if cache_path or dvc_cache_path:
             # Compute cache file name using a signature from SQL query text
-            cypher=hashlib.shake_256()
-            cypher.update(data_source['query'].encode('UTF-8'))
-            signature=cypher.hexdigest(10)
+            cypher = hashlib.shake_256()
+            cypher.update(query_text.encode('UTF-8'))
+            signature = cypher.hexdigest(10)
 
             if self.context not in self.train_queries_signatures:
                 self.train_queries_signatures[self.context]=dict()
@@ -2084,7 +2144,7 @@ class Model(object):
                 # We have a cache hit. Use it.
 
                 self.log(
-                    'Using cache from {cache_file} instead of DB for «{source}» on {context}'.format(
+                    'Using cache from {cache_file} instead of remote source for «{source}» on {context}'.format(
                         source      = data_source['source'],
                         cache_file  = cache_file,
                         context     = self.context
@@ -2093,10 +2153,10 @@ class Model(object):
 
                 df=pandas.read_parquet(cache_file)
             else:
-                # No cache. Retrieve data from DB and make cache.
+                # No cache. Retrieve data from remote source and make cache.
 
                 self.log(
-                    'No cache for «{source}» on {context}, looked for in file {cache_file}. Retrieving data from DB.'.format(
+                    'No cache for «{source}» on {context}, looked for in file {cache_file}. Retrieving data from remote data source.'.format(
                         source      = data_source['source'],
                         cache_file  = cache_file,
                         context     = self.context
@@ -2105,24 +2165,18 @@ class Model(object):
 
         if df is None:
             # No success with cache so far.
-            # Use DB.
+            # Get data from original source.
 
-            source_db=self.coach.get_db_connection(data_source['source'])
-
-            self.log(
-                level=logging.DEBUG,
-                message='Retrieving dataset named «{sourceid}» from «{source}»:\n{query}'.format(
-                    sourceid   = sourceid,
-                    source     = data_source['source'],
-                    query      = textwrap.indent(textwrap.dedent(data_source['query']),'   ')
+            if key_type == 'query':
+                df = self.data_source_to_data_from_query(
+                    query_text,
+                    data_source['source']
                 )
-            )
-
-            # Hit the database
-            df=pandas.read_sql_query(
-                data_source['query'],
-                con=source_db
-            )
+            elif key_type == 'url':
+                df = self.data_source_to_data_from_url(
+                    query_text,
+                    **data_source['params']
+                )
 
             if cache_path:
                 self.log(f'Making cache on {cache_file}')
