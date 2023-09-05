@@ -2007,14 +2007,31 @@ class Model(object):
         data_source is one entry of a complex DataProvider.train_data_sources or
         DataProvider.batch_predict_data_sources
 
-        data_source has structure dict(
-            source='units' | 'xingu',
-            query="SELECT ..."
-        )
+        data_source might have following structures:
+
+            dict(
+                source='db_nickname' | 'xingu',
+                query="SELECT ..."
+            )
+
+        OR
+
+            dict(
+                url="file:/..." | "http://..." | "s3://..."
+            )
 
         sourceid is the name of this source, as it appears in the DP's dict.
 
         This method is called in parallel by data_sources_to_data().
+        """
+
+        """
+        - Check for cache path
+        - Compute unique hash for datasource
+        - Check if cache exists, read_parquet()
+        - If no cache, get data source (URL, DB etc)
+        - Save cache with unique hash
+        - Return dataframe
         """
 
         # Initialize to a non-sense value what we are going to return
@@ -2023,13 +2040,13 @@ class Model(object):
         if data_source is None:
             return df
 
-        cache_path=self.get_config('QUERY_CACHE_PATH', default=None)
-        dvc_cache_path=self.get_config('DVC_QUERY_CACHE_PATH', default=None)
+        cache_path=self.get_config('DATASOURCE_CACHE_PATH', default=None)
+        dvc_cache_path=self.get_config('DVC_DATASOURCE_CACHE_PATH', default=None)
 
         if cache_path is None:
             self.log(
                 level=logging.WARNING,
-                message="QUERY_CACHE_PATH is not set, which is good for production environment. But it will make you query the DB on every run."
+                message="DATASOURCE_CACHE_PATH is not set, which is good for production environment. But it will make you access the (potentially slow and expensive) data source on every run."
             )
 
         cache_template="cache • {context} • {dp} • {sourceid} • {signature}"

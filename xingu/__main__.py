@@ -53,25 +53,29 @@ def prepare_args():
         default=ConfigManager().get('XINGU_DB_URL',default='sqlite:///xingu.db?check_same_thread=False'),
         help='URL for Xingu´s control database as «mysql://user:pass@host.com/dbname?charset=utf8mb4». Overwrites XINGU_DB_URL env. If empty, uses sqlite:///xingu.db?check_same_thread=False, which is a SQLite database on current folder.')
 
+    parser.add_argument('--table-prefix', '--prefix', dest='XINGU_DB_TABLE_PREFIX',
+        default=ConfigManager().get('XINGU_DB_TABLE_PREFIX',default=None),
+        help='A string to prefix every Xingu DB table name with, such as “avi_”. Overwrites XINGU_DB_TABLE_PREFIX env.')
+
+    parser.add_argument('--database', nargs="+", action="append", dest='DATABASES',
+        default=ConfigManager().get('DATABASES',default=None),
+        help='Takes 2 arguments: nickname and SQLAlchemy URL of a database. Can be used multiple times to define multiple databases. Overwrites DATABASES env.')
+
     parser.add_argument('--datalake-athena', dest='DATALAKE_ATHENA_URL', required=False,
         default=ConfigManager().get('DATALAKE_ATHENA_URL',default='awsathena+rest://athena.us-east-1.amazonaws.com/robson_valuation?work_group=mlops'),
         help='URL of Units database as «awsathena+rest://athena.us-east-1.amazonaws.com:443/robson_valuation?work_group=mlops». Overwrites DATALAKE_ATHENA_URL env.')
 
-    parser.add_argument('--table-prefix', '--prefix', dest='XINGU_DB_TABLE_PREFIX',
-        default=ConfigManager().get('XINGU_DB_TABLE_PREFIX',default=None),
-        help='A string to prefix every table name with, such as “avi_”. Overwrites XINGU_DB_TABLE_PREFIX env.')
-
     parser.add_argument('--hyperopt-strategy', dest='HYPEROPT_STRATEGY',
         default=ConfigManager().get('HYPEROPT_STRATEGY',default=None),
-        help='Strategy for hyperparam optimization before training process. May be “last” or “self” or a traind_id or simply not set. Overwrites HYPEROPT_STRATEGY env. If None or not set, PanEstimator’s default will be used.')
+        help='Strategy for hyperparam optimization before training process. May be “last” or “self” or “dp” or a traind_id or a train_session_id or simply not set. Overwrites HYPEROPT_STRATEGY env. If None or not set, Estimator’s defaults will be used.')
 
-    parser.add_argument('--query-cache-path', dest='QUERY_CACHE_PATH',
-        default=ConfigManager().get('QUERY_CACHE_PATH',default=None),
-        help='Folder to store parquets of unprocessed DataProviders’ SQL queries results. Useful to speed up consecutive and repetitive runs in development scenarios. Overwrites QUERY_CACHE_PATH env.')
+    parser.add_argument('--datasource-cache-path', dest='DATASOURCE_CACHE_PATH',
+        default=ConfigManager().get('DATASOURCE_CACHE_PATH',default=None),
+        help='Folder to store parquets of unprocessed DataProviders’ SQL queries results. Useful to speed up consecutive and repetitive runs in development scenarios. Overwrites DATASOURCE_CACHE_PATH env.')
 
-    parser.add_argument('--dvc-query-cache-path', dest='DVC_QUERY_CACHE_PATH',
-        default=ConfigManager().get('DVC_QUERY_CACHE_PATH',default=None),
-        help='Usually set this to the same as --query-cache-path. If set, causes DVC to commit DataProvider’s queries cache files. If set to a different folder, an additional (and unnecessary) copy of cache files will be created there, just for DVC. Overwrites DVC_QUERY_CACHE_PATH env.')
+    parser.add_argument('--dvc-query-cache-path', dest='DVC_DATASOURCE_CACHE_PATH',
+        default=ConfigManager().get('DVC_DATASOURCE_CACHE_PATH',default=None),
+        help='Usually set this to the same as --datasource-cache-path. If set, causes DVC to commit DataProvider’s queries cache files. If set to a different folder, an additional (and unnecessary) copy of cache files will be created there, just for DVC. Overwrites DVC_DATASOURCE_CACHE_PATH env.')
 
     parser.add_argument('--trained-models-path', dest='TRAINED_MODELS_PATH',
         default=ConfigManager().get('TRAINED_MODELS_PATH',default=None),
@@ -129,10 +133,11 @@ def prepare_args():
     parsed = parser.parse_args()
 
     unset_if_none=[
-        'DATAPROVIDER_LIST',           'XINGU_DB_TABLE_PREFIX',        'HYPEROPT_STRATEGY',
-        'QUERY_CACHE_PATH',            'DVC_QUERY_CACHE_PATH',         'TRAINED_MODELS_PATH',
-        'DVC_TRAINED_MODELS_PATH',     'PARALLEL_TRAIN_MAX_WORKERS',
-        'PRE_REQ_TRAIN_OR_SESSION_IDS'
+        'DATAPROVIDER_LIST',            'XINGU_DB_TABLE_PREFIX',
+        'QUERY_CACHE_PATH',             'DVC_QUERY_CACHE_PATH',
+        'DVC_TRAINED_MODELS_PATH',      'PARALLEL_TRAIN_MAX_WORKERS',
+        'HYPEROPT_STRATEGY',            'TRAINED_MODELS_PATH',
+        'PRE_REQ_TRAIN_OR_SESSION_IDS',
     ]
 
     args={}
@@ -166,6 +171,9 @@ def main():
     else:
         dpf=DataProviderFactory(providers_folder=args['DATAPROVIDER_FOLDER'])
 
+    # Prepare list of databases to be parsed latter by Coach.get_db_connection()
+    if isinstance(args['DATABASES'],list):
+        args['DATABASES'] = '|'.join(args['DATABASES'])
 
     # Control DVC
     if args['DVC'] == False:

@@ -53,9 +53,14 @@ Train various Models, all possible in parallel.
                 5. 💫`DataProvider.last_pre_process_for_train(DataFrame)`
                 6. 💫`DataProvider.data_split_for_train(DataFrame)` return tuple of dataframes
                 7. `Model.hyperparam_optimize()` (decide origin of hyperparam)
-                    1. 💫`Estimator.hyperparam_optimize()` (SKOpt, GridSearch et all)
-                8. 💫`Estimator.fit()`
-                9. 💫`DataProvider.post_process_after_train()`
+                    1. 💫`DataProvider.get_estimator_features_list()`
+                    2. 💫`DataProvider.get_target()`
+                    3. 💫`DataProvider.get_estimator_optimization_search_space()`
+                    4. 💫`DataProvider.get_estimator_hyperparameters()`
+                    5. 💫`Estimator.hyperparam_optimize()` (SKOpt, GridSearch et all)
+                    6. 💫`Estimator.hyperparam_exchange()`
+                9. 💫`Estimator.fit()`
+                10. 💫`DataProvider.post_process_after_train()`
     2. `Coach.post_train_parallel()` (background, only if `POST_PROCESS=true`):
         1. Per trained Model (parallelism controled by `PARALLEL_POST_PROCESS_MAX_WORKERS`):
             1. `Model.save()` (PKL save in background)

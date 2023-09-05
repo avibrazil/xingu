@@ -863,8 +863,8 @@ class Coach:
 
 
     def get_db_connection(self, nickname='xingu'):
-        if nickname not in self.databases:
-            raise NotImplementedError(f'Coach knows nothing about a datasource with nickname «{nickname}»')
+        # if nickname not in self.databases:
+        #     raise NotImplementedError(f'Coach knows nothing about a datasource with nickname «{nickname}»')
 
         engine_config_sets=dict(
             # Documentation for all these SQLAlchemy pool control
@@ -909,12 +909,31 @@ class Coach:
             ),
         )
 
-        if 'conn' not in self.databases[nickname]:
-            # Connection to this database not open yet. Just do it.
+        # Convert the text on environment ("nick1|url1|nick2|url2") into
+        # a clean list
+        databases=self.get_config('DATABASES')
 
-            url = self.get_config(self.databases[nickname]['env'])
+        if databases is None:
+            databses=list()
+        else:
+            databases=[i for i in [i.strip() for i in databases.split('|')] if i != '']
+
+        # Process Xingu DB likewise with nickname 'xingu'
+        databases += ['xingu',self.get_config('XINGU_DB_URL')]
+
+        if (len(databases) % 2) != 0:
+            raise NotImplementedError('Malformed DATABASES environment. Format is "nick1|url1|nick2|url2".')
+
+        for i in range(0,len(databases),2):
+            self.databases[databases[i]] = dict(
+                url=databases[i+1]
+            )
+
+            current=self.databases[databases[i]]
 
             if 'athena' in url:
+                # Set some defaults for AWS Athena in here to avoid global
+                # module requirements
                 import pyathena.pandas.cursor
                 engine_config_sets['athena']=dict(
                     connect_args=dict(
@@ -922,17 +941,20 @@ class Coach:
                     )
                 )
 
+            # Start with a default config
             engine_config=engine_config_sets['DEFAULT'].copy()
 
+            # Add engine-specific configs
             for dbtype in engine_config_sets.keys():
-                # Extract from engine_config_sets configuration specific for each DB type
-                if dbtype in url:
+                # Extract from engine_config_sets configuration specific
+                # for each DB type
+                if dbtype in current['url']:
                     engine_config.update(engine_config_sets[dbtype])
 
             # Databricks needs special URL handling
             # URLs are like "databricks+connector://host.com/default?http_path=/sql/..."
-            if 'databricks' in url:
-                tokenized=urllib.parse.urlparse(url)
+            if 'databricks' in current['url']:
+                tokenized=urllib.parse.urlparse(current['url'])
 
                 # Extract connection args as "?http_path=..." into a dict
                 # Returns {'http_path': ['value']}
@@ -948,13 +970,14 @@ class Coach:
 
                 # Reconstruct the URL without the connection args
                 tokenized=tokenized._replace(query=None)
-                url=urllib.parse.urlunparse(tokenized)
+                current['url']=urllib.parse.urlunparse(tokenized)
 
-            self.databases[nickname]['conn']=sqlalchemy.create_engine(
-                url = url,
+            current['conn']=sqlalchemy.create_engine(
+                url = current['url'],
                 **engine_config
             )
-            self.logger.debug(f"Data source «{nickname}» is {self.databases[nickname]['conn']}")
+
+            self.logger.debug(f"Data source «{databases[i]}» is {self.databases[databases[i]]['conn']}")
 
         return self.databases[nickname]['conn']
 
@@ -963,7 +986,7 @@ class Coach:
     def init_db(self):
         if self.get_config('XINGU_DB_URL'):
             # This is just to raise an exception if not set.
-            # Can't do coach business without a DB.
+            # Can't do Coach business without a DB.
             pass
 
 
