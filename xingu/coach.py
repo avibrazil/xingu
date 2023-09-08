@@ -10,7 +10,6 @@ import pathlib
 import pandas
 import queue
 import random
-import randomname
 import sqlalchemy
 import os
 
@@ -176,6 +175,8 @@ class Coach:
 
 
     def team_train_parallel(self):
+        import randomname
+        
         self.train_session_id=randomname.get_name()
 
         self.trained={}

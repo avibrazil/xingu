@@ -3,8 +3,8 @@ import os.path
 import textwrap
 import inspect
 import socket
+import urllib
 import lzma
-import randomname
 import logging
 import datetime
 import re
@@ -14,6 +14,7 @@ import hashlib
 import json
 import concurrent.futures
 import pickle
+
 import yaml
 import sqlalchemy
 import numpy
@@ -21,7 +22,6 @@ import matplotlib
 import pandas
 import s3path
 import smart_open
-import urllib
 import sklearn.metrics as sklm
 
 from . import DataProvider
@@ -348,6 +348,7 @@ class Model(object):
         - Get some metrics
         - Save trained model pickle
         """
+        import randomname
 
         self.train_id          = randomname.get_name()
         if self.coach:
