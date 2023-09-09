@@ -4,14 +4,7 @@ import concurrent.futures
 import decouple
 import numpy
 import pandas
-from typing import List
 import catboost
-
-import sklearn.base
-import sklearn.metrics
-import sklearn.model_selection
-
-import skopt
 
 import xingu
 
@@ -53,7 +46,12 @@ class XinguCatBoostClassifier(xingu.Estimator):
 
 
 
-    def hyperparam_optimize(self, datasets: dict, features: List[str], target: str, search_space: dict):
+    def hyperparam_optimize(self, datasets: dict, features: list, target: str, search_space: dict):
+        import sklearn.model_selection.KFold
+        import sklearn.metrics.roc_auc_score
+        import sklearn.metrics.make_scorer
+        import skopt.BayesSearchCV
+
         optimizer = skopt.BayesSearchCV(
             # Semantics
             estimator            = catboost.CatBoostClassifier(**self.hyperparam),
@@ -66,7 +64,7 @@ class XinguCatBoostClassifier(xingu.Estimator):
 
             # Verbosity
             verbose              = 1,
-            
+
             # Operational
             n_iter               = 200,
             # use just 1 job with CatBoost in order to avoid segmentation fault
@@ -76,22 +74,20 @@ class XinguCatBoostClassifier(xingu.Estimator):
             optimizer_kwargs     = dict(base_estimator='GP'),
             random_state         = self.random_state,
         )
-        
+
         optimizer.fit(
             X = datasets['train'][features],
             y = datasets['train'][target],
-            
+
             # callbacks = [skopt.callbacks.VerboseCallback(100)]
         )
-        
+
         # Convert the OrderedDict returned by these objects into a plain dict
         return {i[0]:i[1] for i in optimizer.best_params_.items()}
 
 
 
     def fit_single(self, datasets, features, target, index) -> catboost.CatBoostClassifier:
-        import sklearn
-
         train_bootstrap = datasets['train'].sample(
             frac               = 1,
             replace            = True,
@@ -101,10 +97,10 @@ class XinguCatBoostClassifier(xingu.Estimator):
         clf = catboost.CatBoostClassifier(
             **self.hyperparam
         )
-        
+
         # Actual training session begins
         self.log(f'Trigger parallel train of CatBoost estimator #{index+1} of {self.bagging_size}...')
-        
+
         clf.fit(
             train_bootstrap[features],
             train_bootstrap[target],
@@ -365,7 +361,7 @@ class XinguCatBoostClassifier(xingu.Estimator):
     def __getstate__(self):
         return dict(
             **xingu.Estimator.__getstate__(self),
-            
+
             # Number of trained models. Should be same as len(bagging_members)
             bagging_size     = self.bagging_size,
 
@@ -379,4 +375,5 @@ class XinguCatBoostClassifier(xingu.Estimator):
 
 
     def is_classifier(self):
+        import sklearn.base.is_classifier
         return sklearn.base.is_classifier(self.bagging_members[0])
