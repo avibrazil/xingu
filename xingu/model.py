@@ -17,7 +17,6 @@ import pickle
 
 import yaml
 import pandas
-import s3path
 import smart_open
 import sklearn.metrics as sklm
 
@@ -1502,10 +1501,13 @@ class Model(object):
                 wait for a commit to DVC.
         """
 
+        
+        
         resolved_path=self.get_config('TRAINED_MODELS_PATH', default=path)
         dvc_resolved_path=self.get_config('DVC_TRAINED_MODELS_PATH', default=dvc_path)
 
         if resolved_path.startswith('s3://'):
+            import s3path
             resolved_path=s3path.S3Path.from_uri(resolved_path)
         else:
             resolved_path=pathlib.Path(resolved_path).resolve()
@@ -1615,6 +1617,7 @@ class Model(object):
 #         self.log(f'Pre-trained model storage is {resolved_path}')
 
         if resolved_path.startswith('s3://'):
+            import s3path
             resolved_path=s3path.S3Path.from_uri(resolved_path)
         else:
             resolved_path=pathlib.Path(resolved_path).resolve()
@@ -1638,20 +1641,7 @@ class Model(object):
 
         # Get list of files in the path that match our filename glob
         # print(f'Searching for {resolved_path/filename}')
-        s3path_bug_101=True # https://github.com/liormizr/s3path/issues/101
-        if type(resolved_path)==s3path.S3Path and s3path_bug_101:
-            # If s3path module still has the bug #101, we'll use s3fs to find
-            # matches for the files we need.
-            # When bug is resolved, we can use the more generic PathLib method
-            # inside `else`.
-            import s3fs
-            s3=s3fs.S3FileSystem()
-            available=[
-                resolved_path / pathlib.PurePath(f).relative_to(str(resolved_path)[1:])
-                for f in s3.glob(str(resolved_path / filename)[1:]) if '.dvc' not in str(f)
-            ]
-        else:
-            available=[f for f in list(resolved_path.glob(filename)) if '.dvc' not in str(f)]
+        available=[f for f in list(resolved_path.glob(filename)) if '.dvc' not in str(f)]
 
         available.sort()
 
