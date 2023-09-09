@@ -14,11 +14,6 @@ import os
 
 import yaml
 
-try:
-    import pygit2
-except:
-    pass
-
 from . import DataProvider
 from . import DataProviderFactory
 from . import Estimator
@@ -58,6 +53,7 @@ class Coach:
         self.databases=dict()
 
         try:
+            import pygit2
             self.git_repo=pygit2.Repository(self.get_config('PROJECT_HOME'))
             self.logger.debug("Using git repo on {}".format(self.git_repo))
         except:
