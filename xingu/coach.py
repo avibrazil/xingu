@@ -71,7 +71,7 @@ class Coach:
         # Database initialization block
         self.tables={}
         self.xingu_db=None
-        self.init_db()
+        # self.init_db()
 
         # Flow control on queues and parallelism
         self.post_processing=False
