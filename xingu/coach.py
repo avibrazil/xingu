@@ -892,7 +892,7 @@ class Coach:
         databases=self.get_config('DATABASES')
 
         if databases is None:
-            databses=list()
+            databases=list()
         else:
             databases=[i for i in [i.strip() for i in databases.split('|')] if i != '']
 
@@ -932,11 +932,11 @@ class Coach:
             # Databricks needs special URL handling
             # URLs are like "databricks+connector://host.com/default?http_path=/sql/..."
             if 'databricks' in current['url']:
-                tokenized=urllib.parse.urlparse(current['url'])
+                tokenized = urllib.parse.urlparse(current['url'])
 
                 # Extract connection args as "?http_path=..." into a dict
                 # Returns {'http_path': ['value']}
-                conn_args=urllib.parse.parse_qs(tokenized.query)
+                conn_args = urllib.parse.parse_qs(tokenized.query)
 
                 # Unwrap the value from the list
                 # Return  {'http_path': 'value'}
@@ -950,12 +950,14 @@ class Coach:
                 tokenized=tokenized._replace(query=None)
                 current['url']=urllib.parse.urlunparse(tokenized)
 
-            current['conn']=sqlalchemy.create_engine(
+            current['conn'] = sqlalchemy.create_engine(
                 url = current['url'],
                 **engine_config
             )
             
-            self.init_db()
+            # DB Engine was just created; check if all tables are there
+            if databases[i] == 'xingu':
+                self.init_db()
 
             self.logger.debug(f"Data source «{databases[i]}» is {self.databases[databases[i]]['conn']}")
 
