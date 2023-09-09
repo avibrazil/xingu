@@ -18,7 +18,6 @@ import pickle
 import yaml
 import sqlalchemy
 import numpy
-import matplotlib
 import pandas
 import s3path
 import smart_open
@@ -998,6 +997,7 @@ class Model(object):
                     for train_plot_renderer in methods[domain]:
                         plots=train_plot_renderer(**params)
                         if plots is not None:
+                            import matplotlib
                             for p in plots:
                                 matplotlib.pyplot.close(plots[p])
                             all_plots[part].update(plots)
@@ -1031,6 +1031,7 @@ class Model(object):
             for batch_plot_renderer in methods[domain]:
                 plots=batch_plot_renderer(**params)
                 if plots is not None:
+                    import matplotlib
                     for p in plots:
                         matplotlib.pyplot.close(plots[p])
                     all_plots.update(plots)
@@ -1061,6 +1062,7 @@ class Model(object):
             for global_plot_renderer in methods[domain]:
                 plots=global_plot_renderer(**params)
                 if plots is not None:
+                    import matplotlib
                     for p in plots:
                         matplotlib.pyplot.close(plots[p])
                     all_plots.update(plots)
