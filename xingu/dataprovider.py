@@ -1,10 +1,7 @@
 import inspect
-from typing import Tuple
 import logging
 import datetime
-import pandas as pd
-
-from typing import Tuple
+import pandas
 
 from .estimator import Estimator
 
@@ -85,13 +82,13 @@ class DataProvider(object):
     ###########################################################
 
 
-    def clean_data_for_train(self, datasets: dict) -> pd.DataFrame:
+    def clean_data_for_train(self, datasets: dict) -> pandas.DataFrame:
         """
         datasets is a dict with format:
 
             {
-                'NAME_OF_DATASET1': pd.DataFrame,
-                'NAME_OF_DATASET2': pd.DataFrame
+                'NAME_OF_DATASET1': pandas.DataFrame,
+                'NAME_OF_DATASET2': pandas.DataFrame
             }
 
         This method needs to integrate all these DataFrames and return a single
@@ -99,11 +96,11 @@ class DataProvider(object):
 
         This must be implemented on a derived class.
         """
-        return pd.DataFrame()
+        return pandas.DataFrame()
 
 
 
-    def feature_engineering_for_train(self, data: pd.DataFrame) -> pd.DataFrame:
+    def feature_engineering_for_train(self, data: pandas.DataFrame) -> pandas.DataFrame:
         """
         Applies any post-cleanup feature engineering on the DataFrame returned
         by clean_data().
@@ -114,7 +111,7 @@ class DataProvider(object):
 
 
 
-    def last_pre_process_for_train(self, data: pd.DataFrame) -> pd.DataFrame:
+    def last_pre_process_for_train(self, data: pandas.DataFrame) -> pandas.DataFrame:
         """
         Last chance to process data returned by train_feature_engineering() and before training.
 
@@ -124,17 +121,17 @@ class DataProvider(object):
 
 
 
-    def clean_data_for_batch_predict(self, datasets: dict) -> pd.DataFrame:
-        return pd.DataFrame()
+    def clean_data_for_batch_predict(self, datasets: dict) -> pandas.DataFrame:
+        return pandas.DataFrame()
 
 
 
-    def feature_engineering_for_batch_predict(self, data: pd.DataFrame) -> pd.DataFrame:
+    def feature_engineering_for_batch_predict(self, data: pandas.DataFrame) -> pandas.DataFrame:
         return data
 
 
 
-    def last_pre_process_for_batch_predict(self, data: pd.DataFrame) -> pd.DataFrame:
+    def last_pre_process_for_batch_predict(self, data: pandas.DataFrame) -> pandas.DataFrame:
         """
         Last chance to process data returned by feature_engineering_for_batch_predict() and before batch prediction.
 
@@ -146,7 +143,7 @@ class DataProvider(object):
 
     # Implement this if you need to fabricate features for your estimator. And in this
     # case, x_estimator_features and x_features might probably be different
-    def feature_engineering_for_predict(self, data: pd.DataFrame) -> pd.DataFrame:
+    def feature_engineering_for_predict(self, data: pandas.DataFrame) -> pandas.DataFrame:
         """
         User must call this before all pred_*() methods in order to prepare data for the estimator.
 
@@ -211,7 +208,7 @@ class DataProvider(object):
 
 
 
-    def pre_process_for_generic_predict(self, X: pd.DataFrame, model) -> pd.DataFrame:
+    def pre_process_for_generic_predict(self, X: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Virtual method to be implemented in concrete DPs in case your pre-processing is
         the same for predict() and predict_proba().
@@ -223,7 +220,7 @@ class DataProvider(object):
 
 
 
-    def post_process_after_generic_predict(self, X: pd.DataFrame, Y_pred: pd.DataFrame, model) -> pd.DataFrame:
+    def post_process_after_generic_predict(self, X: pandas.DataFrame, Y_pred: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Virtual method to be implemented in concrete DPs in case your post-processing is
         the same for predict() and predict_proba().
@@ -235,7 +232,7 @@ class DataProvider(object):
 
     
     
-    def pre_process_for_predict(self, X: pd.DataFrame, model) -> pd.DataFrame:
+    def pre_process_for_predict(self, X: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Called by Model.generic_predict() right before X is passed to its internal
         estimator to compute Ŷ.
@@ -249,7 +246,7 @@ class DataProvider(object):
     
     
     
-    def post_process_after_predict(self, X: pd.DataFrame, Y_pred: pd.DataFrame, model) -> pd.DataFrame:
+    def post_process_after_predict(self, X: pandas.DataFrame, Y_pred: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Called by Model.pred_dist() right after Ŷ (Y_pred) is computed.
         
@@ -264,7 +261,7 @@ class DataProvider(object):
 
 
     
-    def pre_process_for_predict_proba(self, X: pd.DataFrame, model) -> pd.DataFrame:
+    def pre_process_for_predict_proba(self, X: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Called by Model.generic_predict() right before X is passed to its internal
         estimator to compute Ŷ.
@@ -278,7 +275,7 @@ class DataProvider(object):
     
     
     
-    def post_process_after_predict_proba(self, X: pd.DataFrame, Y_pred: pd.DataFrame, model) -> pd.DataFrame:
+    def post_process_after_predict_proba(self, X: pandas.DataFrame, Y_pred: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Called by Model.pred_dist() right after Ŷ (Y_pred) is computed.
         
@@ -388,7 +385,7 @@ class DataProvider(object):
     ###########################################################
 
 
-    def random_data_split(data: pd.DataFrame, test_size: float, val_size: float) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def random_data_split(data: pandas.DataFrame, test_size: float, val_size: float) -> (pandas.DataFrame, pandas.DataFrame, pandas.DataFrame):
         """
         Split data in 3 parts as:
 
@@ -445,7 +442,7 @@ class DataProvider(object):
 
 
 
-    def data_split_for_train(self, data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def data_split_for_train(self, data: pandas.DataFrame):
         """
         Convenience default implementation that will be called by Model.fit() method.
         Your DataProvider may implement something different.
