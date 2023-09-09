@@ -1,6 +1,6 @@
 import os
-import decouple
 import re
+import decouple
 
 
 # Singleton implementation from https://stackoverflow.com/questions/6760685/creating-a-singleton-in-python

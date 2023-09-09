@@ -1,8 +1,6 @@
-import logging
-import numpy
 import os
+import logging
 import pandas
-from typing import List
 
 
 
@@ -24,7 +22,7 @@ class Estimator(object):
 
 
 
-    def hyperparam_optimize(self, datasets: dict, features: List[str], target: str, search_space: dict) -> dict:
+    def hyperparam_optimize(self, datasets: dict, features: list, target: str, search_space: dict) -> dict:
         # Please implement in a concrete class
         pass
 
@@ -43,7 +41,7 @@ class Estimator(object):
 
 
 
-    def fit(self, datasets: dict, features: List[str], target: str):
+    def fit(self, datasets: dict, features: list, target: str):
         """
         Train one or multiple models. Leave everything ready for a predict()
         """
