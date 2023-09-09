@@ -10,26 +10,18 @@ import pathlib
 import pandas
 import queue
 import random
-import sqlalchemy
 import os
 
-
+import yaml
 
 try:
     import pygit2
 except:
     pass
 
-
-
-import yaml
-# import sqlalchemy.pool
-from sqlalchemy import (Column, Integer, String, Float, DateTime, Table,
-    MetaData, Index, ForeignKeyConstraint, UniqueConstraint)  # , JSON, ARRAY
 from . import DataProvider
 from . import DataProviderFactory
 from . import Estimator
-# from . import NGBClassic
 from . import ConfigManager
 
 
@@ -176,11 +168,11 @@ class Coach:
 
     def team_train_parallel(self):
         import randomname
-        
+
         self.train_session_id=randomname.get_name()
 
-        self.trained={}
-        self.trained_in_session=[]
+        self.trained = {}
+        self.trained_in_session = []
 
         self.logger.info('Training Models for the following DataProviders: ' + str(self.dp_factory.providers_list))
 
@@ -192,11 +184,11 @@ class Coach:
         ##
         ##################################################################################
 
-        to_train=list(self.dp_factory.produce())
+        to_train = list(self.dp_factory.produce())
 
         to_load=set()
         for dp in to_train:
-            to_load=to_load | self.dp_factory.get_pre_req(dp)
+            to_load = to_load | self.dp_factory.get_pre_req(dp)
 
         # Compute list of pre-req models that need to be loaded except the ones
         # that are going to be trained
@@ -703,6 +695,8 @@ class Coach:
 
     def report(self, train_ids: list=None, dataprovider_id: str=None, on: str='model',
                     start: str=None, reference_train_id: str=None) -> pandas.DataFrame:
+        
+        import sqlalchemy
 
         # Method idealized but still unimplemented.
 
@@ -852,6 +846,8 @@ class Coach:
     def get_db_connection(self, nickname='xingu'):
         if nickname in self.databases:
             return self.databases[nickname]['conn']
+        
+        import sqlalchemy
 
         engine_config_sets=dict(
             # Documentation for all these SQLAlchemy pool control
@@ -963,6 +959,8 @@ class Coach:
                 url = current['url'],
                 **engine_config
             )
+            
+            self.init_db()
 
             self.logger.debug(f"Data source «{databases[i]}» is {self.databases[databases[i]]['conn']}")
 
@@ -976,6 +974,7 @@ class Coach:
             # Can't do Coach business without a DB.
             pass
 
+        import sqlalchemy
 
         self.logger.info('Going to create tables on Xingu DB')
 
@@ -984,26 +983,26 @@ class Coach:
         self.xingu_db_table_prefix=self.get_config('XINGU_DB_TABLE_PREFIX','')
 
         table_name='training'
-        self.tables[table_name] = Table(
+        self.tables[table_name] = sqlalchemy.Table(
             self.xingu_db_table_prefix + table_name,
             self.xingu_db_metadata,
-            Column(
-                'train_session_id', String,
+            sqlalchemy.Column(
+                'train_session_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_id', String,
+            sqlalchemy.Column(
+                'train_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
+            sqlalchemy.Column(
                 'dataprovider_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
 
-            UniqueConstraint(
+            sqlalchemy.UniqueConstraint(
                 'train_session_id',
                 'train_id',
                 'dataprovider_id',
@@ -1012,36 +1011,34 @@ class Coach:
         )
 
         table_name='training_attributes'
-        self.tables[table_name] = Table(
+        self.tables[table_name] = sqlalchemy.Table(
             self.xingu_db_table_prefix + table_name,
             self.xingu_db_metadata,
-            Column(
-                'train_session_id', String,
+            sqlalchemy.Column(
+                'train_session_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_id', String,
+            sqlalchemy.Column(
+                'train_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
+            sqlalchemy.Column(
                 'dataprovider_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'attribute',
-                String,
+            sqlalchemy.Column(
+                'attribute', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'value',
-                String
+            sqlalchemy.Column(
+                'value', sqlalchemy.String
             ),
 
-            UniqueConstraint(
+            sqlalchemy.UniqueConstraint(
                 'train_session_id',
                 'train_id',
                 'dataprovider_id',
@@ -1051,37 +1048,35 @@ class Coach:
         )
 
         table_name='training_steps'
-        self.tables[table_name] = Table(
+        self.tables[table_name] = sqlalchemy.Table(
             self.xingu_db_table_prefix + table_name,
             self.xingu_db_metadata,
-            Column(
-                'time',
-                Integer,
+            sqlalchemy.Column(
+                'time', sqlalchemy.Integer,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
+            sqlalchemy.Column(
                 'dataprovider_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_session_id', String,
+            sqlalchemy.Column(
+                'train_session_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_id', String,
+            sqlalchemy.Column(
+                'train_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'status',
-                String,
+            sqlalchemy.Column(
+                'status', sqlalchemy.String,
                 primary_key=True
             ),
 
-            ForeignKeyConstraint(
+            sqlalchemy.ForeignKeyConstraint(
                 [
                     'dataprovider_id',
                     'train_session_id',
@@ -1094,40 +1089,40 @@ class Coach:
                 ]
             ),
 
-            Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_status', 'status'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_status', 'status'),
         )
 
         table_name='sets'
-        self.tables[table_name] = Table(
+        self.tables[table_name] = sqlalchemy.Table(
             self.xingu_db_table_prefix + table_name,
             self.xingu_db_metadata,
-            Column(
-                'dataprovider_id', String,
+            sqlalchemy.Column(
+                'dataprovider_id', sqlalchemy.String,
                 nullable=False
             ),
-            Column(
-                'train_session_id', String,
+            sqlalchemy.Column(
+                'train_session_id', sqlalchemy.String,
                 nullable=False
             ),
-            Column(
-                'train_id', String,
+            sqlalchemy.Column(
+                'train_id', sqlalchemy.String,
                 nullable=False
             ),
-            Column(
-                'set', String,
+            sqlalchemy.Column(
+                'set', sqlalchemy.String,
                 nullable=False
             ),
-            Column(
-                'index', String,
+            sqlalchemy.Column(
+                'index', sqlalchemy.String,
                 nullable=False
             ),
-            Column('target', Float),
+            sqlalchemy.Column('target', sqlalchemy.Float),
 
-            ForeignKeyConstraint(
+            sqlalchemy.ForeignKeyConstraint(
                 [
                     'dataprovider_id',
                     'train_session_id',
@@ -1140,50 +1135,49 @@ class Coach:
                 ]
             ),
 
-            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
 
         table_name='metrics_model'
-        self.tables[table_name] = Table(
+        self.tables[table_name] = sqlalchemy.Table(
             self.xingu_db_table_prefix + table_name,
             self.xingu_db_metadata,
-            Column(
-                'time',
-                Integer,
+            sqlalchemy.Column(
+                'time', sqlalchemy.Integer,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'dataprovider_id', String,
+            sqlalchemy.Column(
+                'dataprovider_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_session_id', String,
+            sqlalchemy.Column(
+                'train_session_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_id', String,
+            sqlalchemy.Column(
+                'train_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'set', String,
+            sqlalchemy.Column(
+                'set', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'name', String,
+            sqlalchemy.Column(
+                'name', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column('value_number', Float),
-            Column('value_text', String),
+            sqlalchemy.Column('value_number', sqlalchemy.Float),
+            sqlalchemy.Column('value_text', sqlalchemy.String),
 
-            ForeignKeyConstraint(
+            sqlalchemy.ForeignKeyConstraint(
                 [
                     'dataprovider_id',
                     'train_session_id',
@@ -1196,51 +1190,50 @@ class Coach:
                 ]
             ),
 
-            Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
 
         table_name='metrics_estimation'
-        self.tables[table_name] = Table(
+        self.tables[table_name] = sqlalchemy.Table(
             self.xingu_db_table_prefix + table_name,
             self.xingu_db_metadata,
-            Column(
-                'time',
-                Integer,
+            sqlalchemy.Column(
+                'time', sqlalchemy.Integer,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_session_id', String,
+            sqlalchemy.Column(
+                'train_session_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_id', String,
+            sqlalchemy.Column(
+                'train_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'dataprovider_id', String,
+            sqlalchemy.Column(
+                'dataprovider_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'index', String,
+            sqlalchemy.Column(
+                'index', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'name', String,
+            sqlalchemy.Column(
+                'name', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column('value_number', Float),
-            Column('value_text', String),
+            sqlalchemy.Column('value_number', sqlalchemy.Float),
+            sqlalchemy.Column('value_text', sqlalchemy.String),
 
-            ForeignKeyConstraint(
+            sqlalchemy.ForeignKeyConstraint(
                 [
                     'dataprovider_id',
                     'train_session_id',
@@ -1253,29 +1246,28 @@ class Coach:
                 ]
             ),
 
-            Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
 
         table_name='estimations'
-        self.tables[table_name] = Table(
+        self.tables[table_name] = sqlalchemy.Table(
             self.xingu_db_table_prefix + table_name,
             self.xingu_db_metadata,
-            Column(
-                'time',
-                Integer,
+            sqlalchemy.Column(
+                'time', sqlalchemy.Integer,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'dataprovider_id', String,
+            sqlalchemy.Column(
+                'dataprovider_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_session_id', String,
+            sqlalchemy.Column(
+                'train_session_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
@@ -1284,14 +1276,14 @@ class Coach:
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'index', String,
+            sqlalchemy.Column(
+                'index', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
-            Column('estimation', Float),
+            sqlalchemy.Column('estimation', sqlalchemy.Float),
 
-            ForeignKeyConstraint(
+            sqlalchemy.ForeignKeyConstraint(
                 [
                     'dataprovider_id',
                     'train_session_id',
@@ -1304,10 +1296,10 @@ class Coach:
                 ]
             ),
 
-            Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
 
         self.xingu_db_metadata.create_all()
