@@ -1268,8 +1268,8 @@ class Coach:
                 primary_key=True,
                 nullable=False
             ),
-            Column(
-                'train_id', String,
+            sqlalchemy.Column(
+                'train_id', sqlalchemy.String,
                 primary_key=True,
                 nullable=False
             ),
