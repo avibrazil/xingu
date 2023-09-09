@@ -7,11 +7,11 @@ import importlib
 import logging
 import socket
 import pathlib
-import pandas
 import queue
 import random
 import os
 
+import pandas
 import yaml
 
 from . import DataProvider

@@ -15,10 +15,7 @@ import json
 import concurrent.futures
 import pickle
 
-import yaml
 import pandas
-import smart_open
-import sklearn.metrics as sklm
 
 from . import DataProvider
 from . import Coach
@@ -1298,6 +1295,8 @@ class Model(object):
         # General info and collection of IDs
         metrics={'classic:count': XY.shape[0]}
 
+        import sklearn.metrics
+
         if XY.shape[0]<2:
             self.log(
                 level=logging.WARNING,
@@ -1310,11 +1309,11 @@ class Model(object):
                 **metrics,
                 **{
                     # Collection of Metrics
-                    'classic:ROC AUC':      sklm.roc_auc_score(
+                    'classic:ROC AUC':      sklearn.metrics.roc_auc_score(
                         y_true = XY[target],
                         y_score = Y_pred[proba_class_col]
                     ),
-                    'classic:Average Precision Score': sklm.average_precision_score(
+                    'classic:Average Precision Score': sklearn.metrics.average_precision_score(
                         y_true = XY[target],
                         y_score = Y_pred[proba_class_col]
                     ),
@@ -1325,18 +1324,18 @@ class Model(object):
                 **metrics,
                 **{
                     # Collection of Metrics
-                    'classic:RMSE':           sklm.mean_squared_error(
+                    'classic:RMSE':           sklearn.metrics.mean_squared_error(
                         y_true = XY[target],
                         y_pred = Y_pred,
                         squared = False
                     ),
 
-                     'classic:Mean Absolute Error':   sklm.mean_absolute_error(
+                     'classic:Mean Absolute Error':   sklearn.metrics.mean_absolute_error(
                         y_true = XY[target],
                         y_pred = Y_pred
                     ),
 
-                    'classic:Mean Absolute Percentage Error': sklm.mean_absolute_percentage_error(
+                    'classic:Mean Absolute Percentage Error': sklearn.metrics.mean_absolute_percentage_error(
                         y_true = XY[target],
                         y_pred = Y_pred
                     ),
@@ -1501,8 +1500,7 @@ class Model(object):
                 wait for a commit to DVC.
         """
 
-        
-        
+
         resolved_path=self.get_config('TRAINED_MODELS_PATH', default=path)
         dvc_resolved_path=self.get_config('DVC_TRAINED_MODELS_PATH', default=dvc_path)
 
@@ -1531,6 +1529,8 @@ class Model(object):
                 target=target
             )
         )
+
+        import smart_open
 
         smart_open.register_compressor('.xz', Model._handle_xz)
 
@@ -1688,6 +1688,8 @@ class Model(object):
             model_file=available[-1]
         else:
             raise FileNotFoundError(f'No pre-trained model for ‘{dp_id} • {train_session_id}:{train_id}’ to load. Search folder is ‘{resolved_path}’')
+
+        import smart_open
 
         smart_open.register_compressor('.xz', Model._handle_xz)
 
@@ -1932,6 +1934,8 @@ class Model(object):
                     dvc_shell.append(f'git add "{file[0]}.dvc"')
                     file_level_messages.append(f"   {file[0]}: {file[1]}")
 
+            import yaml
+            
             message=message.format(
                 dp=self.dp.id,
                 train_session_id=self.train_session_id,
@@ -2298,7 +2302,7 @@ class Model(object):
 
     def signature(self) -> dict:
         """
-        Return a dict ready to be converted into YAML for currents.yaml
+        Return a dict ready to be converted into YAML for inventory.yaml
         """
         attributes={
             # Train info
