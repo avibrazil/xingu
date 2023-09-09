@@ -67,7 +67,6 @@ class Coach:
         # Database initialization block
         self.tables={}
         self.xingu_db=None
-        # self.init_db()
 
         # Flow control on queues and parallelism
         self.post_processing=False
@@ -551,7 +550,7 @@ class Coach:
         try:
             self.logger.debug("Trying to open {}".format(target))
             with open(target) as f:
-                self.inventory=yaml.safe_load(f)
+                self.inventory = yaml.safe_load(f)
         except FileNotFoundError as e:
             self.inventory={}
 
@@ -605,7 +604,7 @@ class Coach:
                     model_class:                          str  = 'Model'
         ):
         """
-        Load pre-trained Robson estimators into RobsonCoach’s inventory.
+        Load pre-trained Xingu models into Coach’s inventory.
 
         PKLs will be searched in S3 or filesystem path defined in
         pre_trained_path.
@@ -613,7 +612,7 @@ class Coach:
         explicit_list -- Load estimators only for this DataProviders. Load all
         if empty or None.
 
-        post_process -- If True, submit loaded estimator for post-processing
+        post_process -- If True, submit loaded models for post-processing
         (batch predict, metrics computation etc)
         """
         xingu_module = importlib.import_module(xingu_module)
@@ -636,13 +635,13 @@ class Coach:
         )
 
         # Start with a fresh empty team
-        self.trained={}
+        self.trained = dict()
 
         if explicit_list is None:
             explicit_list=list(self.dp_factory.produce())
 
         # Find all pre-reqs of desired models and add them to the list
-        to_load=set()
+        to_load = set()
         for dp in explicit_list:
             if isinstance(dp, str):
                 to_load=to_load | {dp}    | self.dp_factory.get_pre_req(dp)
@@ -653,26 +652,26 @@ class Coach:
 
         # Parallel load of all desired pre-trained Robson objects
         with concurrent.futures.ThreadPoolExecutor(thread_name_prefix='team_load') as executor:
-            tasks=[]
+            tasks = []
 
             for dp in to_load:
-                model_params=copy.deepcopy(model_params_template)
-                model_params['coach']=self
-                model_params['dp']=self.dp_factory.dps[dp]() if isinstance(dp, str) else dp
+                model_params = copy.deepcopy(model_params_template)
+                model_params['coach'] = self
+                model_params['dp'] = self.dp_factory.dps[dp]() if isinstance(dp, str) else dp
 
                 if (
                             'models' in self.inventory and
                             dp in self.inventory['models']
                 ):
-                    model_params['pre_trained_train_id']=self.inventory['models'][dp]['train_id']
-                    model_params['train_or_session_id_match_list']=None
+                    model_params['pre_trained_train_id'] = self.inventory['models'][dp]['train_id']
+                    model_params['train_or_session_id_match_list'] = None
 
                 self.logger.info(f'Trigger background loading of ‘{dp}’')
                 tasks.append(executor.submit(Model, **model_params))
 
             for task in concurrent.futures.as_completed(tasks):
                 # Does nothing if thread succeeded. Raises the task's exception otherwise.
-                mod=task.result()
+                mod = task.result()
                 self.declare_trained(mod, post_process=post_process)
                 self.logger.info(f'Loaded {mod}')
 
