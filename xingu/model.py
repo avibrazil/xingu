@@ -16,8 +16,6 @@ import concurrent.futures
 import pickle
 
 import yaml
-import sqlalchemy
-import numpy
 import pandas
 import s3path
 import smart_open
@@ -249,6 +247,8 @@ class Model(object):
 
         elif self.hyperopt_strategy is not None:
             # Get from DB last computed hyper-parameters for this DP or a specific train_id.
+            
+            import sqlalchemy
 
             # Table shortcuts for readability
             attributes = self.coach.tables['training_attributes']
@@ -1451,7 +1451,7 @@ class Model(object):
 
                     # Useless index
                     .set_index('features')
-                    
+
                     .plot
                     .barh()
                     .get_figure()
@@ -1462,20 +1462,13 @@ class Model(object):
 
     def median_ape(y_true: pandas.Series, y_pred: pandas.Series) -> float:
         # Med(|(ŷ-y)÷y|)
-        return numpy.median(
-                numpy.abs(
-                    (y_true - y_pred) / y_true
-                )
-            )
+        return ((y_true - y_pred) / y_true).abs().median()
 
 
 
     def median_pe(y_true: pandas.Series, y_pred: pandas.Series) -> float:
         # Med(|(y-ŷ)÷ŷ|)
-        return numpy.median(
-                    (y_pred - y_true) / y_true
-                )
-
+        return ((y_pred - y_true) / y_true).median()
 
 
 
