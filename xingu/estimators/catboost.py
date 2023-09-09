@@ -47,18 +47,17 @@ class XinguCatBoostClassifier(xingu.Estimator):
 
 
     def hyperparam_optimize(self, datasets: dict, features: list, target: str, search_space: dict):
-        import sklearn.model_selection.KFold
-        import sklearn.metrics.roc_auc_score
-        import sklearn.metrics.make_scorer
-        import skopt.BayesSearchCV
+        from sklearn.model_selection import KFold
+        from sklearn.metrics import roc_auc_score, make_scorer
+        from skopt import BayesSearchCV
 
-        optimizer = skopt.BayesSearchCV(
+        optimizer = BayesSearchCV(
             # Semantics
             estimator            = catboost.CatBoostClassifier(**self.hyperparam),
-            cv                   = sklearn.model_selection.KFold(n_splits=5, shuffle=True, random_state=2022),
+            cv                   = KFold(n_splits=5, shuffle=True, random_state=2022),
             search_spaces        = search_space,
-            scoring              = sklearn.metrics.make_scorer(
-                sklearn.metrics.roc_auc_score,
+            scoring              = make_scorer(
+                roc_auc_score,
                 needs_threshold     = True
             ),
 
@@ -332,10 +331,10 @@ class XinguCatBoostClassifier(xingu.Estimator):
                 executor.submit(
                     # ... this method ...
                     self.predict_single,
-                    
+
                     # ... first parameter ...
                     data,
-                    
+
                     # ... second parameter ...
                     method,
 
@@ -375,5 +374,5 @@ class XinguCatBoostClassifier(xingu.Estimator):
 
 
     def is_classifier(self):
-        import sklearn.base.is_classifier
-        return sklearn.base.is_classifier(self.bagging_members[0])
+        from sklearn.base import is_classifier
+        return is_classifier(self.bagging_members[0])
