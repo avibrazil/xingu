@@ -58,9 +58,9 @@ class DataProvider(object):
     ###########################################################
 
     estimator_class:                      type   = Estimator
-    estimator_hyperparams:                dict   = None
-    estimator_params:                     dict   = None
-    estimator_hyperparam_search_space:    dict   = None
+    estimator_hyperparams:                dict   = dict()
+    estimator_params:                     dict   = dict()
+    estimator_hyperparam_search_space:    dict   = dict()
 
 
     ###########################################################

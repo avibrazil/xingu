@@ -2135,7 +2135,7 @@ class Model(object):
 
                 self.log(
                     'Using cache from {cache_file} instead of remote source for «{source}» on {context}'.format(
-                        source      = data_source['source'],
+                        source      = sourceid,
                         cache_file  = cache_file,
                         context     = self.context
                     )
@@ -2165,7 +2165,7 @@ class Model(object):
             elif key_type == 'url':
                 df = self.data_source_to_data_from_url(
                     query_text,
-                    **data_source['params'] if 'params' in data_source else dict()
+                    params=data_source['params'] if 'params' in data_source else dict()
                 )
 
             if cache_path:
