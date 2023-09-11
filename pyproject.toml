@@ -1,6 +1,6 @@
 [project]
 name = "xingu"
-version = '1.0.5'
+version = '1.0.6'
 description = "Automated ML model training"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -30,6 +30,17 @@ dependencies = [
 # dynamic = [
 #     "version",
 # ]
+
+classifiers=[
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)",
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
 
 [project.scripts]
 xingu = "xingu.__main__:main"

@@ -12,9 +12,8 @@ bundles = dict(
             # DATAPROVIDER_LIST=              "anuncios_bh,anuncios_scs",
 
             ### Databases
-            XINGU_DB_URL=                   "sqlite:///xingu.db?check_same_thread=False",
-            DATALAKE_ATHENA_URL=            "awsathena+rest://athena.us-east-1.amazonaws.com:443/my_db?work_group=some_workgroup&compression=snappy",
-            DATALAKE_DATABRICKS_URL=        "databricks+connector://token:dapi170...1a3@dbc-da9-ab6.cloud.databricks.com/default?http_path=/sql/1.0/endpoints/b4...d3e",
+            XINGU_DB_URL=  "sqlite:///xingu.db?check_same_thread=False",
+            DATABASES=     "myathena|awsathena+rest://athena.us-east-1.amazonaws.com:443/my_db?work_group=some_workgroup&compression=snappy",
 
             # Athena URLs with explicit user and password work too, if you don't have ~/.aws/credentials
             # DATALAKE_ATHENA_URL="awsathena+rest://AKIAU......YZWSWWZ:YE0h......wwCzwa@athena.us-east-1.amazonaws.com:443/robson_valuation?work_group=mlops",
@@ -26,7 +25,7 @@ bundles = dict(
             TRAINED_MODELS_PATH=            str(project_home / 'models'),
 
             ### Where to save query caches
-            QUERY_CACHE_PATH=               str(project_home / 'data'),
+            DATASOURCES_CACHE_PATH=               str(project_home / 'data'),
 
             ### Plots and graphics control
             PLOTS_PATH=                     str(project_home / 'plots'),
@@ -43,8 +42,7 @@ bundles = dict(
         beta_explorer=dict(
             ### Databases
             XINGU_DB_URL=                  "postgresql+psycopg2://{%AWS_PARAM:staging-user%}:{%AWS_SECRET:staging-rds-secret%}@{%AWS_PARAM:staging-url%}/{%AWS_PARAM:staging-database-name%}",
-            DATALAKE_ATHENA_URL=            "awsathena+rest://athena.us-east-1.amazonaws.com:443/my_db?work_group=some_workgroup&compression=snappy",
-            DATALAKE_DATABRICKS_URL=        "databricks+connector://token:dapi170...1a3@dbc-da9-ab6.cloud.databricks.com/default?http_path=/sql/1.0/endpoints/b4...d3e",
+            DATABASES=     "myathena|awsathena+rest://athena.us-east-1.amazonaws.com:443/my_db?work_group=some_workgroup&compression=snappy",
 
             ### Comma-separated list of train_ids or train_session_ids to search and pre-load pre-req estimators
             # PRE_REQ_TRAIN_OR_SESSION_IDS=   "model-one,model-two"
@@ -54,7 +52,7 @@ bundles = dict(
             DVC_TRAINED_MODELS_PATH=        str(project_home / 'models'),
 
             ### Where to save query caches
-            QUERY_CACHE_PATH=               str(project_home / 'data'),
+            DATASOURCES_CACHE_PATH=         str(project_home / 'data'),
             DVC_QUERY_CACHE_PATH=           str(project_home / 'data'),
 
             ### Plots and graphics control
