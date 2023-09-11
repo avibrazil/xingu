@@ -61,10 +61,6 @@ def prepare_args():
         default=ConfigManager().get('DATABASES',default=None),
         help='Takes 2 arguments: nickname and SQLAlchemy URL of a database. Can be used multiple times to define multiple databases. Overwrites DATABASES env.')
 
-    parser.add_argument('--datalake-athena', dest='DATALAKE_ATHENA_URL', required=False,
-        default=ConfigManager().get('DATALAKE_ATHENA_URL',default='awsathena+rest://athena.us-east-1.amazonaws.com/robson_valuation?work_group=mlops'),
-        help='URL of Units database as «awsathena+rest://athena.us-east-1.amazonaws.com:443/robson_valuation?work_group=mlops». Overwrites DATALAKE_ATHENA_URL env.')
-
     parser.add_argument('--hyperopt-strategy', dest='HYPEROPT_STRATEGY',
         default=ConfigManager().get('HYPEROPT_STRATEGY',default=None),
         help='Strategy for hyperparam optimization before training process. May be “last” or “self” or “dp” or a traind_id or a train_session_id or simply not set. Overwrites HYPEROPT_STRATEGY env. If None or not set, Estimator’s defaults will be used.')
