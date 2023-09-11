@@ -50,6 +50,12 @@ post-processing.
 pip install https://github.com/avibrazil/xingu
 ```
 
+or
+
+```shell
+pip install xingu
+```
+
 ## Use to Train a Model
 Check your project has the necessary files:
 ```shell
