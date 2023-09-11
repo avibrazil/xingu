@@ -29,8 +29,8 @@ post-processing.
 - Don´t save ad-hoc hypermaters after optimizations. Let Xingu store and manage
   those for you in a way that can be reused in future trains.
   
-- Don´t change your code for if you want different functionality. Use Xingu
-  environment variables of command line parameters to strategize your trains.
+- Don´t change your code if you want different functionality. Use Xingu
+  environment variables or command line parameters to strategize your trains.
 
 - Don´t manually copy PKLs to production environments on S3 or other object
   storage. Use Xingu´s deployment tools to automate the deployment step.
