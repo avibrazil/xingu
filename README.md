@@ -11,38 +11,38 @@ a product, use Xingu proposed classes to organize interactions with DB
 training algorithm, general and custom metrics computation, estimation
 post-processing.
 
-- Don´t save a pickle at the end of your EDA, let Xingu organize a versioned
+- Don’t save a pickle at the end of your EDA, let Xingu organize a versioned
   inventory of saved models (PKLs) linked and associated to commit hashes and
   branches of your code.
 
-- Don´t save metrics manually and in an informal way. Metrics are first class
+- Don’t save metrics manually and in an informal way. Metrics are first class
   citizens, so use Xingu to write methods that compute metrics and let it
   store metrics in an organized database that can be queried and compared.
 
-- Don´t make ad-hoc plots to understand your data. Plots are important assets
+- Don’t make ad-hoc plots to understand your data. Plots are important assets
   to measure the quality of your model, so use Xingu to write methods that
   formaly generate versioned plots.
 
 - Do not worry or even write code that loads pre-req models, use Xingu pre-req
   architecture to load pre-req models for you and package them together.
 
-- Don´t save ad-hoc hypermaters after optimizations. Let Xingu store and manage
+- Don’t save ad-hoc hypermaters after optimizations. Let Xingu store and manage
   those for you in a way that can be reused in future trains.
   
-- Don´t change your code if you want different functionality. Use Xingu
+- Don’t change your code if you want different functionality. Use Xingu
   environment variables or command line parameters to strategize your trains.
 
-- Don´t manually copy PKLs to production environments on S3 or other object
-  storage. Use Xingu´s deployment tools to automate the deployment step.
+- Don’t manually copy PKLs to production environments on S3 or other object
+  storage. Use Xingu’s deployment tools to automate the deployment step.
   
-- Don´t write database integration code. Just provide your queries and Xingu
+- Don’t write database integration code. Just provide your queries and Xingu
   will give you the data. Xingu will also maintain a local cache of your data
-  so you won´t hammer your database across multiple retrains. Do the same with
+  so you won’t hammer your database across multiple retrains. Do the same with
   static data files with parquet, CSV, on local filesystem or object storage.
   
 - Xingu can run anyware, from your laptop, with a plain SQLite database, to
   large scale cloud-powered training pipelines with GitOps, Jenkins, Docker
-  etc. Xingu´s database is used only to cellect training information, it isn´t
+  etc. Xingu’s database is used only to cellect training information, it isn´t
   required later when model is used to predict.
 
 ## Install
