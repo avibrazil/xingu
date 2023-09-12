@@ -57,27 +57,84 @@ pip install xingu
 ```
 
 ## Use to Train a Model
-Check your project has the necessary files:
+Check your project has the necessary files and folders:
 ```shell
 $ find
 dataproviders/
 dataproviders/my_dataprovider.py
 estimators/
 estimators/myrandomestimator.py
+models/
+data/
+plots/
 ```
 Train with DataProviders `id_of_my_dataprovider1` and `id_of_my_dataprovider2`, both defined in `dataproviders/my_dataprovider.py`:
 ```shell
 $ xingu \
     --dps id_of_my_dataprovider1,id_of_my_dataprovider2 \
-    --datalake-athena "awsathena+rest://athena.us..." \
+    --databases athena "awsathena+rest://athena.us..." \
     --query-cache-path data \
     --trained-models-path models \
     --debug
 ```
 
+## Use the API
+See the [proof of concept notebook](https://github.com/avibrazil/xingu/blob/main/notebooks/POC%20Use%20Xingu.ipynb) with vairous usage scenarios:
+
+- POC 1. Train some Models
+- POC 2. Use Pre-Trained Models for Batch Predict
+- POC 3. Assess Metrics and create Comparative Reports
+- POC 4. Check and report how Metrics evolved
+- POC 5. Play with Xingu barebones
+- POC 6. Play with the `ConfigManager`
+- POC 7. Xingu Estimators in the Command Line
+- POC 8. Deploy Xingu Data and Estimators between environments (laptop, staging, production etc)
+
 ## Procedures defined by Xingu
 
-Steps marked with 💫 are were you put your code. All the rest is Xingu boilerplate code ready to use.
+Xingu classes do all the heavy lifting while you focus on your machine learning
+code only.
+
+- Class `Coach` is responsible of coordinating the training process of one or
+multiple models. You control parallelism via command line or environment
+variables.
+
+- Class `Model` implements a standard pipelines for train, train with hyperparam
+optimization, load and save pickles, database access etc. These pipelines are
+is fully controlled by your DataProvider or the environment.
+
+- Class `DataProvider` is a base class that is constantly queried by the `Model`
+to determine how the `Model` should operate. Your should create a class derived
+from `DataProvider` and reimplement whatever you want to change. This will
+completely change behaviour of `Model` operation in a way that you´ll get a
+completelly different model.
+
+    - It is your `DataProvider` that defines the source of training data as SQL
+    queries or URLs of parquets, CSVs, JSONs
+    - It is your `DataProvider` that defines how multi-source data should be
+    integrated
+    - It is your `DataProvider` that defines how data should be split into train
+    and test sets
+    - Your `DataProvider` defines which `Estimator` class to use
+    - Your `DataProvider` defines how the `Estimator` should be initialized and
+    optimized
+    - Your `DataProvider` defines which metrics should be computed, how to
+    compute them and against which dataset
+    - Your `DataProvider` defines which plots should be created and against
+    which dataset
+    - See below when and how each method of your `DataProvider` will be called
+    by `xingu.Model`
+    
+- Class `Estimator` is another base class (that you can reimplement) to contain
+estimator-specific affairs. There will be an `Estimator`-derived class for an
+XGBoostRegressor, other for a CatBoostClassifier, other for a
+SciKit-Learn-specific algorithm, including hyperparam optimization logic and
+libraries. A concrete `Estimator` class can and should be reused across multiple
+different models.
+
+The hierarchical diagrams below expose complete Xingu pipelines with all their
+steps. Steps marked with 💫 are were you put your code. All the rest is Xingu
+boilerplate code ready to use.
 
 ### `Coach.team_train()`:
 
@@ -88,7 +145,7 @@ Train various Models, all possible in parallel.
     2. Per DataProvider requested to be trained:
         1. `Coach.team_train_member()` (background):
             1. `Model.fit()` calls:
-                1. 💫`DataProvider.get_dataset_sources_for_train()` return dict of queries
+                1. 💫`DataProvider.get_dataset_sources_for_train()` return dict of queries and/or URLs
                 2. `Model.data_sources_to_data(sources)`
                 3. 💫`DataProvider.clean_data_for_train(dict of DataFrames)`
                 4. 💫`DataProvider.feature_engineering_for_train(DataFrame)`
