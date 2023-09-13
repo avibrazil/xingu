@@ -1,7 +1,7 @@
 [project]
 name = "xingu"
-version = '1.0.7'
-description = "Automated ML model training"
+version = '1.0.8'
+description = "Automated ML model training and packaging"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.8"
