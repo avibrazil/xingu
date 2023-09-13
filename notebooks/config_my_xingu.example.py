@@ -140,7 +140,8 @@ bundles = dict(
             # Maximum parallelism.
             PARALLEL_TRAIN_MAX_WORKERS=             '0',
             PARALLEL_POST_PROCESS_MAX_WORKERS=      '0',
-            PARALLEL_ESTIMATORS_MAX_WORKERS=        '0'
+            PARALLEL_ESTIMATORS_MAX_WORKERS=        '0',
+            PARALLEL_DATASOURCE_MAX_WORKERS=        '0',
         ),
 
         predict_only=dict(
@@ -152,7 +153,8 @@ bundles = dict(
             BATCH_PREDICT=                          'true',
 
             # Maximum parallelism.
-            PARALLEL_POST_PROCESS_MAX_WORKERS=      '0'
+            PARALLEL_POST_PROCESS_MAX_WORKERS=      '0',
+            PARALLEL_DATASOURCE_MAX_WORKERS=        '0',
         ),
 
         hyper_optimize_only=dict(
@@ -169,7 +171,8 @@ bundles = dict(
 
             # Maximum parallelism.
             PARALLEL_HYPEROPT_MAX_WORKERS=          '0',
-            PARALLEL_ESTIMATORS_MAX_WORKERS=        '0'
+            PARALLEL_ESTIMATORS_MAX_WORKERS=        '0',
+            PARALLEL_DATASOURCE_MAX_WORKERS=        '0',
         ),
 
         do_all=dict(
@@ -182,13 +185,14 @@ bundles = dict(
             HYPEROPT_STRATEGY=                      'self',
 
 
-            # One at a time
+            # Not all at a time
             PARALLEL_TRAIN_MAX_WORKERS=             '3',
 
             # Do not exagerate
             PARALLEL_HYPEROPT_MAX_WORKERS=          '6',
             PARALLEL_POST_PROCESS_MAX_WORKERS=      '3',
             PARALLEL_ESTIMATORS_MAX_WORKERS=        '0'
+            PARALLEL_DATASOURCE_MAX_WORKERS=        '3',
         ),
 
         do_all_sequential=dict(
@@ -207,7 +211,8 @@ bundles = dict(
             # Do not exagerate
             PARALLEL_HYPEROPT_MAX_WORKERS=          '1',
             PARALLEL_POST_PROCESS_MAX_WORKERS=      '1',
-            PARALLEL_ESTIMATORS_MAX_WORKERS=        '1'
+            PARALLEL_ESTIMATORS_MAX_WORKERS=        '1',
+            PARALLEL_DATASOURCE_MAX_WORKERS=        '1',
         )
     )
 )

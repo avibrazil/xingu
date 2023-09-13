@@ -210,9 +210,9 @@ class Coach:
         max_workers=self.get_config('PARALLEL_TRAIN_MAX_WORKERS', default=0, cast=int)
         if max_workers == '' or max_workers == 0:
             max_workers=None
-            self.logger.info(f'Training all possible Robsons in parallel')
+            self.logger.info(f'Training all possible Models in parallel')
         else:
-            self.logger.info(f'Training {max_workers} Robsons in parallel')
+            self.logger.info(f'Training {max_workers} Models in parallel')
 
 
         with concurrent.futures.ThreadPoolExecutor(

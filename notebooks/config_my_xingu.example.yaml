@@ -81,6 +81,7 @@ profiles:
                 PARALLEL_HYPEROPT_MAX_WORKERS: '6'
                 PARALLEL_POST_PROCESS_MAX_WORKERS: '3'
                 PARALLEL_TRAIN_MAX_WORKERS: '3'
+                PARALLEL_DATASOURCE_MAX_WORKERS: '3'
 
       do_all_sequential:
             <<: *do_all_parallel
@@ -91,6 +92,7 @@ profiles:
                 PARALLEL_HYPEROPT_MAX_WORKERS: '1'
                 PARALLEL_POST_PROCESS_MAX_WORKERS: '1'
                 PARALLEL_TRAIN_MAX_WORKERS: '1'
+                PARALLEL_DATASOURCE_MAX_WORKERS: '1'
                 
       hyper_optimize_only:
             name: Hyper-optimize only
@@ -103,7 +105,7 @@ profiles:
                 PARALLEL_ESTIMATORS_MAX_WORKERS: '0'
                 PARALLEL_HYPEROPT_MAX_WORKERS: '0'
                 PARALLEL_TRAIN_MAX_WORKERS: '1'
-                
+                PARALLEL_DATASOURCE_MAX_WORKERS: '0'
                 
       train_and_predict: &train_and_predict
             name: Train and Predict
@@ -116,7 +118,7 @@ profiles:
                 PARALLEL_ESTIMATORS_MAX_WORKERS: '0'
                 PARALLEL_POST_PROCESS_MAX_WORKERS: '0'
                 PARALLEL_TRAIN_MAX_WORKERS: '0'
-
+                PARALLEL_DATASOURCE_MAX_WORKERS: '0'
                 
       predict_only:
             <<: *do_all_parallel
@@ -127,4 +129,5 @@ profiles:
                 POST_PROCESS: 'false'
                 BATCH_PREDICT: 'true'
                 PARALLEL_POST_PROCESS_MAX_WORKERS: '0'
-                
+                PARALLEL_DATASOURCE_MAX_WORKERS: '0'
+

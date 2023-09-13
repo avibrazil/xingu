@@ -2216,13 +2216,25 @@ class Model(object):
 
         collected_data=dict()
 
+        # Define how many parallel workers to execute
+        # TODO: max workers should be by datasource type
+        max_workers=self.get_config('PARALLEL_DATASOURCE_MAX_WORKERS', default=0, cast=int)
+        if max_workers == '' or max_workers == 0:
+            max_workers=None
+            self.log(f'Accessing all datasources in parallel')
+        else:
+            self.log(f'Accessing {max_workers} datasources in parallel')
+
         # Iterate over all data sources, decide wether to use cache or execute query,
-        # save query data to cache if QUERY_CACHE_PATH is set.
-        with concurrent.futures.ThreadPoolExecutor(thread_name_prefix='data_sources_to_data') as e:
+        # save query data to cache if DATASOURCE_CACHE_PATH is set.
+        with concurrent.futures.ThreadPoolExecutor(
+                        thread_name_prefix='data_sources_to_data',
+                        max_workers=max_workers
+                ) as e:
             tasks={
                 # Submit all queries or cache data loading in parallel, track them in a
                 # dict comprehension.
-                e.submit(self.data_source_to_data,sourceid,data_sources[sourceid]): sourceid
+                e.submit(self.data_source_to_data, sourceid, data_sources[sourceid]): sourceid
                 for sourceid in data_sources.keys()
             }
 
