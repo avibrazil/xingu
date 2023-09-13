@@ -2123,32 +2123,38 @@ class Model(object):
 
         if cache_path:
             # Lets try cache first
-
-            cache_file=pathlib.Path(
-                cache_path,
-                cache_file_name
-            ).resolve()
+            
+            if cache_path.startswith('s3://'):
+                import s3path
+                cache_pypath=s3path.S3Path.from_uri(cache_path)
+            else:
+                cache_pypath=pathlib.Path(cache_path).resolve()
+            
+            cache_file = cache_pypath / cache_file_name
+            
+            if cache_path.startswith('s3://'):
+                cache_file_uri=cache_file.as_uri()                
 
             # Check if we have a file with this name
-            if os.path.isfile(cache_file):
+            if cache_file.is_file():
                 # We have a cache hit. Use it.
 
                 self.log(
                     'Using cache from {cache_file} instead of remote source for «{source}» on {context}'.format(
                         source      = sourceid,
-                        cache_file  = cache_file,
+                        cache_file  = cache_file_uri,
                         context     = self.context
                     )
                 )
 
-                df=pandas.read_parquet(cache_file)
+                df=pandas.read_parquet(cache_file_uri)
             else:
                 # No cache. Retrieve data from remote source and make cache.
 
                 self.log(
                     'No cache for «{source}» on {context}, looked for in file {cache_file}. Retrieving data from remote data source.'.format(
                         source      = sourceid,
-                        cache_file  = cache_file,
+                        cache_file  = cache_file_uri,
                         context     = self.context
                     )
                 )
@@ -2169,8 +2175,8 @@ class Model(object):
                 )
 
             if cache_path:
-                self.log(f'Making cache on {cache_file}')
-                df.to_parquet(cache_file, compression='gzip')
+                self.log(f'Making cache on {cache_file_uri}')
+                df.to_parquet(cache_file_uri, compression='gzip')
 
             if dvc_cache_path:
                 if cache_path is None or dvc_cache_path!=cache_path:
