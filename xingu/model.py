@@ -354,7 +354,7 @@ class Model(object):
 
         # Get DP SQL queries
         self.log(message='Asking DataProvider for training queries')
-        sources=self.dp.get_dataset_sources_for_train()
+        sources=self.dp.get_dataset_sources_for_train(model=self)
 
         # Transform queries into real data
         self.log(message='Retrieving database data as defined by DataProvider')
@@ -450,7 +450,7 @@ class Model(object):
 
         # Get DP SQL queries
         self.log('Asking DataProvider for batch predict queries')
-        sources=self.dp.get_dataset_sources_for_batch_predict()
+        sources=self.dp.get_dataset_sources_for_batch_predict(model=self)
         if sources is None:
             self.log('DataProvider provides no data to batch predict')
             return None
@@ -1969,8 +1969,18 @@ class Model(object):
 
 
     def save_sets_cache(self):
-        cache_path=self.get_config('QUERY_CACHE_PATH', default=None)
+        cache_path=self.get_config('DATSOURCE_CACHE_PATH', default=None)
         if cache_path:
+            if cache_path.startswith('s3://'):
+                import s3path
+
+                # s3fs needs to be imported otherwise pyathena somehow grabs internal calls and fails
+                import s3fs
+
+                cache_pypath=s3path.S3Path.from_uri(cache_path)
+            else:
+                cache_pypath=pathlib.Path(cache_path).resolve()
+
             cache_template="cache • {context} • {dp} • {part}"
 
             for part in self.sets:
@@ -1980,15 +1990,15 @@ class Model(object):
                     part       = part,
                 )
 
-                cache_file_name=cache_file_name_prefix + '.parquet'
+                cache_file_name = cache_file_name_prefix + '.parquet'
 
-                cache_file=pathlib.Path(
-                    cache_path,
-                    cache_file_name
-                ).resolve()
+                cache_file = cache_pypath / cache_file_name
 
-                self.log(f'Saving part on {cache_file}')
-                self.sets[part].to_parquet(cache_file, compression='gzip')
+                if cache_path.startswith('s3://'):
+                    cache_file_uri=urllib.parse.unquote(cache_file.as_uri())
+
+                self.log(f'Saving part on {cache_file_uri}')
+                self.sets[part].to_parquet(cache_file_uri, compression='gzip')
 
 
 
@@ -2029,17 +2039,20 @@ class Model(object):
 
 
     def data_source_to_data_from_query(self, query: str, con_nickname: str) -> pandas.DataFrame:
+        # Remove excessive indenting
+        query_text = textwrap.dedent(query)
+
         self.log(
-            level=logging.DEBUG,
+            level=logging.INFO,
             message='Retrieving dataset from «{source}»:\n{query}'.format(
                 source     = con_nickname,
-                query      = textwrap.indent(textwrap.dedent(query),'   ')
+                query      = textwrap.indent(query_text,'   ')
             )
         )
 
         # Hit the database
         return pandas.read_sql_query(
-            sql = query,
+            sql = query_text,
             con = self.coach.get_db_connection(con_nickname)
         )
 
@@ -2123,31 +2136,43 @@ class Model(object):
 
         if cache_path:
             # Lets try cache first
-            
+
             if cache_path.startswith('s3://'):
                 import s3path
                 cache_pypath=s3path.S3Path.from_uri(cache_path)
             else:
                 cache_pypath=pathlib.Path(cache_path).resolve()
-            
+
             cache_file = cache_pypath / cache_file_name
-            
+
             if cache_path.startswith('s3://'):
-                cache_file_uri=cache_file.as_uri()                
+                cache_file_uri=urllib.parse.unquote(cache_file.as_uri())
 
             # Check if we have a file with this name
             if cache_file.is_file():
                 # We have a cache hit. Use it.
 
-                self.log(
-                    'Using cache from {cache_file} instead of remote source for «{source}» on {context}'.format(
-                        source      = sourceid,
-                        cache_file  = cache_file_uri,
-                        context     = self.context
+                try:
+                    df=pandas.read_parquet(cache_file_uri)
+                except Exception:
+                    # Cache is invalid and throws something like ArrowInvalid,
+                    # so ignore and grab data from datasource again.
+                    self.log(
+                        'Invalid cache for «{source}» on {context}, looked for in file {cache_file}. Retrieving data from remote data source.'.format(
+                            source      = sourceid,
+                            cache_file  = cache_file_uri,
+                            context     = self.context
+                        ),
+                        level=logging.WARNING
                     )
-                )
-
-                df=pandas.read_parquet(cache_file_uri)
+                else:
+                    self.log(
+                        'Using cache from {cache_file} instead of remote source for «{source}» on {context}'.format(
+                            source      = sourceid,
+                            cache_file  = cache_file_uri,
+                            context     = self.context
+                        )
+                    )
             else:
                 # No cache. Retrieve data from remote source and make cache.
 
@@ -2174,9 +2199,19 @@ class Model(object):
                     params=data_source['params'] if 'params' in data_source else dict()
                 )
 
+            self.log(
+                'Data for «{source}» on {context} has shape {rows}×{cols}.'.format(
+                    source      = sourceid,
+                    context     = self.context,
+                    rows        = df.shape[0],
+                    cols        = df.shape[1],
+                )
+            )
+            
             if cache_path:
                 self.log(f'Making cache on {cache_file_uri}')
-                df.to_parquet(cache_file_uri, compression='gzip')
+                with cache_file.open('bw') as f:
+                    df.to_parquet(f, compression='gzip')
 
             if dvc_cache_path:
                 if cache_path is None or dvc_cache_path!=cache_path:
