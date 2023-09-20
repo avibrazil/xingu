@@ -1095,7 +1095,79 @@ class Model(object):
         return model_plots if len(model_plots.keys()) else None
 
 
-        
+
+    def render_global_model_plots_ROCAUC(self):
+        """
+        Plot one axes with overlapped ROC curves of all sets available on
+        model.sets. Include AUC number as annotation.
+        """
+        if not self.estimator.is_classifier():
+            # ROC curves only make sense to classifiers
+            return None
+
+        import sklearn.metrics
+
+        target_col = self.dp.get_target()
+        proba = f'estimation_class_{self.dp.proba_class_index}'
+
+        # Make 'train' the first set
+        priority = 'train'
+        sets = [priority] + list(set(self.sets.keys())-set([priority]))
+
+        # Associate some colors to datasets
+        colors = """
+            blue
+            red
+            green
+            brown
+            black
+            yellow
+            cyan
+        """.split()
+
+        # This works as a join...
+        colors = dict(zip(sets,colors))
+
+        roc = None
+        for s in sets:
+            # Draw many ROC curves in the same axes.
+            roc=sklearn.metrics.RocCurveDisplay.from_predictions(
+                y_true     = self.sets[s][target_col],
+                y_pred     = self.sets_estimations[s][proba],
+                pos_label  = 1,
+                name       = s,
+                color      = colors[s],
+                ax         = (roc.ax_ if roc is not None else None)
+            )
+
+        # Annotate with train data
+        import matplotlib
+        at = matplotlib.offsetbox.AnchoredText(
+                prop=dict(size=10),
+                frameon=True,
+                loc='upper left',
+                s='\n'.join(
+                    [
+                        "DataProvider: {dp}",
+                        "Train: {complete_train_id}",
+                        "Trained: {trained}"
+                    ]
+                ).format(
+                    dp=self.dp.id,
+                    complete_train_id=self.get_full_train_id(),
+                    trained=self.trained.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                ),
+            )
+        # at.get_bbox().set(alpha=0.4)
+        at.patch.set_alpha(0.4)
+        at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+        roc.ax_.add_artist(at)
+
+        roc.ax_.set_title("ROC and Area Under Curve")
+
+        return ({'ROC and AUC': roc.figure_} if roc is not None else None)
+
+
 
     def save_model_metrics(self, channel='trainsets'):
         self.context='model_metrics'
