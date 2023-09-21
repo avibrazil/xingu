@@ -326,7 +326,7 @@ class DataProvider(object):
 
 
 
-    def get_dataset_sources_for_train(self) -> dict:
+    def get_dataset_sources_for_train(self, model=None) -> dict:
         """
         Returns the train_dataset_sources, which is a dicts with format:
 
@@ -349,7 +349,7 @@ class DataProvider(object):
 
 
 
-    def get_dataset_sources_for_batch_predict(self) -> dict:
+    def get_dataset_sources_for_batch_predict(self, model=None) -> dict:
         return self.batch_predict_dataset_sources
 
 

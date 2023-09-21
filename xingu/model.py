@@ -2217,6 +2217,7 @@ class Model(object):
 
             cache_file = cache_pypath / cache_file_name
 
+            cache_file_uri=cache_file
             if cache_path.startswith('s3://'):
                 cache_file_uri=urllib.parse.unquote(cache_file.as_uri())
 
@@ -2279,7 +2280,7 @@ class Model(object):
                     cols        = df.shape[1],
                 )
             )
-            
+
             if cache_path:
                 self.log(f'Making cache on {cache_file_uri}')
                 with cache_file.open('bw') as f:

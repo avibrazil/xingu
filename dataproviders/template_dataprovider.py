@@ -1,4 +1,7 @@
+import pandas
 import xingu
+import xingu.estimators.catboost
+
 
 class DPMyModel(xingu.DataProvider):
     # The ID of your model is how it will be referenced everywhere.
@@ -148,7 +151,7 @@ class DPMyModel(xingu.DataProvider):
     
     # Implement this method if you need to pass Xingu a data source dict more
     # dynamic than train_dataset_sources attribute
-    # def get_dataset_sources_for_train(self) -> dict:
+    # def get_dataset_sources_for_train(model: xingu.Model) -> dict:
     #     return self.train_dataset_sources
 
 

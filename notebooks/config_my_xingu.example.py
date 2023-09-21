@@ -25,7 +25,7 @@ bundles = dict(
             TRAINED_MODELS_PATH=            str(project_home / 'models'),
 
             ### Where to save query caches
-            DATASOURCES_CACHE_PATH=               str(project_home / 'data'),
+            DATASOURCE_CACHE_PATH=               str(project_home / 'data'),
 
             ### Plots and graphics control
             PLOTS_PATH=                     str(project_home / 'plots'),
@@ -52,7 +52,7 @@ bundles = dict(
             DVC_TRAINED_MODELS_PATH=        str(project_home / 'models'),
 
             ### Where to save query caches
-            DATASOURCES_CACHE_PATH=         str(project_home / 'data'),
+            DATASOURCE_CACHE_PATH=         str(project_home / 'data'),
             DVC_QUERY_CACHE_PATH=           str(project_home / 'data'),
 
             ### Plots and graphics control

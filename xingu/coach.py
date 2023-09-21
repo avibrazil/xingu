@@ -74,13 +74,6 @@ class Coach:
 
 
     def get_config(self, config_item: str, default=ConfigManager.undefined, cast=ConfigManager.undefined):
-#         if 'ROBSON_DB' == config_item:
-#             return self.get_robson_db()
-
-#         elif 'UNITS_DB' == config_item:
-#             return self.get_units_db()
-
-#         else:
         if default==ConfigManager.undefined:
             if config_item in self.defaults:
                 return self.config.get(config_item, default=self.defaults[config_item], cast=cast)
@@ -889,7 +882,7 @@ class Coach:
 
         # Convert the text on environment ("nick1|url1|nick2|url2") into
         # a clean list
-        databases=self.get_config('DATABASES')
+        databases=self.get_config('DATABASES', default=None)
 
         if databases is None:
             databases=list()

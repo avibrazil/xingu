@@ -8,7 +8,10 @@
 # 2023-09-06
 #
 
+import logging
+import numpy
 import pandas
+import sklearn.preprocessing
 import xingu
 
 class DPAmes(xingu.DataProvider):
@@ -21,7 +24,8 @@ class DPAmes(xingu.DataProvider):
 
     train_dataset_sources         = dict(
         ames_train=dict(
-            url="https://storage.googleapis.com/kagglesdsdata/competitions/5407/868283/train.csv",
+            # url="https://storage.googleapis.com/kagglesdsdata/competitions/5407/868283/train.csv",
+            url="https://avi.alkalay.net/clipboard/ames_houses_train.csv",
         ),
     )
 
@@ -112,10 +116,12 @@ class DPAmes(xingu.DataProvider):
             datasets['ames_train']
             .set_index('Id')
 
-            # The 2 points where GrLivArea>4000 and SalePrice<300000 are outliers; remove
+            # The 2 points where GrLivArea>4000 and SalePrice<300000 are
+            # outliers; remove
             .pipe(lambda table: table.drop(table.query("GrLivArea>4000 and SalePrice<300000").index))
 
-            # Convert columns to categorical and fill NaNs with whats in the documentation
+            # Convert columns to categorical and fill NaNs with whats in
+            # the documentation
             .assign(
                 # Fill NaNs with what is in the documentation
 
@@ -167,6 +173,10 @@ class DPAmes(xingu.DataProvider):
                 Utilities    = lambda table: table.Utilities.fillna(unk).astype(pandas.api.types.CategoricalDtype(categories=categoricalOrderedFeatures['Utilities'],ordered=True)),
             )
 
+            .pipe(
+                lambda table: ddebug(table,"Columns so far: \n" + pandas.DataFrame(table.columns.sort_values()).to_markdown())
+            )
+
             .assign(
                 # Replace unknwon values with feature mode
                 KitchenQual=lambda table: table.KitchenQual.str.replace(unk, table.KitchenQual.mode().head(1).values[0]),
@@ -195,12 +205,30 @@ class DPAmes(xingu.DataProvider):
                 LotFrontage=lambda table: table.groupby('Neighborhood')['LotFrontage'].transform(lambda x: x.fillna(x.median())),
 
                 # New column
-                TotalSF=lambda table: table.TotalBsmtSF + table.n1stFlrSF + table.n2ndFlrSF,
+                TotalSF=lambda table: table.TotalBsmtSF + table['1stFlrSF'] + table['2ndFlrSF'],
 
                 # Features to log
                 logTotalSF=lambda table: numpy.log1p(table.TotalSF),
                 logLotArea=lambda table: numpy.log1p(table.LotArea),
-                logn1stFlrSF=lambda table: numpy.log1p(table.n1stFlrSF),
+                log1stFlrSF=lambda table: numpy.log1p(table['1stFlrSF']),
                 logGrLivArea=lambda table: numpy.log1p(table.GrLivArea),
             )
         )
+
+        # Create LabelEncoders for each categorical feature
+        self.encoders=dict()
+        for c in categoricalFeatures:
+            # Create and save encoder for column
+            self.encoders[c]=sklearn.preprocessing.LabelEncoder().fit(df[[c]])
+
+        # Create OrdinalEncoder for each ordered categorical feature
+        for c in categoricalOrderedFeatures:
+            # Create and save encoder for column
+            self.encoders[c]=sklearn.preprocessing.OrdinalEncoder(categories=[df[c].cat.categories]).fit(df[[c]])
+
+        # Now apply encoding for all categorical columns
+        for c in categoricalFeatures + categoricalOrderedFeatures:
+            # Use encoder to convert column to numeric information
+            df[f'numeric_{c}']=self.encoders[c].transform(df[c])
+
+        return df

@@ -185,3 +185,10 @@ poetry.toml
 pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
+
+Untitled.ipynb
+xingu.db
+inventory.yaml
+config_my_xingu.py
+config_my_xingu.yaml
+data/*
