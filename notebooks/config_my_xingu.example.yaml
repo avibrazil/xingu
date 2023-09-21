@@ -13,8 +13,7 @@ building blocks:
             description: Basic definitions used everywhere
             env:
                 PROJECT_HOME: .
-                DATALAKE_ATHENA_URL: awsathena+rest://athena.us-east-1.amazonaws.com:443/my_db?work_group=some_workgroup&compression=snappy
-                DATALAKE_DATABRICKS_URL: databricks+connector://token:dapi170...1a3@dbc-da9-ab6.cloud.databricks.com/default?http_path=/sql/1.0/endpoints/b4...d3e
+                DATABASES: "myathena|awsathena+rest://athena.us-east-1.amazonaws.com:443/my_db?work_group=some_workgroup&compression=snappy",
 
       dvc: &dvc
             name: DVC definitions
@@ -22,8 +21,8 @@ building blocks:
             env:
                 DVC_QUERY_CACHE_PATH: data
                 DVC_TRAINED_MODELS_PATH: models
-                
-                
+
+
 profiles:
       alpha_explorer: &alpha_explorer
             <<: *basics
@@ -31,8 +30,8 @@ profiles:
             description: Use Xingu self contained in a laptop without externaal DB or storage
             env:
                 DEBUG: 'true'
-                QUERY_CACHE_PATH: data
-                TRAINED_MODELS_PATH: models                
+                DATASOURCE_CACHE_PATH: data
+                TRAINED_MODELS_PATH: models
                 XINGU_DB_URL: sqlite:///xingu.db?check_same_thread=False
 
       beta_explorer: &beta_explorer
@@ -45,7 +44,7 @@ profiles:
                 DEBUG: 'true'
                 XINGU_DB_URL: postgresql+psycopg2://{%AWS_PARAM:staging-user%}:{%AWS_SECRET:staging-rds-secret%}@{%AWS_PARAM:staging-url%}/{%AWS_PARAM:staging-database-name%}
                 TRAINED_MODELS_PATH: s3://{%AWS_PARAM:staging-bucket%}/trained-models
-                
+
       production:
             <<: *basics
             <<: *dvc
@@ -56,7 +55,7 @@ profiles:
                 DEBUG: 'false'
                 XINGU_DB_URL: postgresql+psycopg2://{%AWS_PARAM:production-user%}:{%AWS_SECRET:production-rds-secret%}@{%AWS_PARAM:production-url%}/{%AWS_PARAM:production-database-name%}
                 TRAINED_MODELS_PATH: s3://{%AWS_PARAM:production-bucket%}/trained-models
-                
+
       staging:
             <<: *beta_explorer
             <<: *dvc
@@ -93,7 +92,7 @@ profiles:
                 PARALLEL_POST_PROCESS_MAX_WORKERS: '1'
                 PARALLEL_TRAIN_MAX_WORKERS: '1'
                 PARALLEL_DATASOURCE_MAX_WORKERS: '1'
-                
+
       hyper_optimize_only:
             name: Hyper-optimize only
             description: Only hyper-optimize with max parallelism, no train, no batch-predict
@@ -106,7 +105,7 @@ profiles:
                 PARALLEL_HYPEROPT_MAX_WORKERS: '0'
                 PARALLEL_TRAIN_MAX_WORKERS: '1'
                 PARALLEL_DATASOURCE_MAX_WORKERS: '0'
-                
+
       train_and_predict: &train_and_predict
             name: Train and Predict
             description: Everyday train and batch predict in parallel without hyper-parameter optimization
@@ -119,7 +118,7 @@ profiles:
                 PARALLEL_POST_PROCESS_MAX_WORKERS: '0'
                 PARALLEL_TRAIN_MAX_WORKERS: '0'
                 PARALLEL_DATASOURCE_MAX_WORKERS: '0'
-                
+
       predict_only:
             <<: *do_all_parallel
             name: Predict only
