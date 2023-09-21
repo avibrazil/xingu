@@ -191,7 +191,7 @@ bundles = dict(
             # Do not exagerate
             PARALLEL_HYPEROPT_MAX_WORKERS=          '6',
             PARALLEL_POST_PROCESS_MAX_WORKERS=      '3',
-            PARALLEL_ESTIMATORS_MAX_WORKERS=        '0'
+            PARALLEL_ESTIMATORS_MAX_WORKERS=        '0',
             PARALLEL_DATASOURCE_MAX_WORKERS=        '3',
         ),
 
