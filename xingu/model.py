@@ -2310,51 +2310,179 @@ class Model(object):
 
 
 
+    def data_sources_group_to_data(self, group: str, data_sources: pandas.DataFrame) -> dict:
+        """
+        data_sources is a DataFrame with data sources of a single group,
+        like this:
+
+        |   sequence | name           | query    | source      | url      | params          |
+        |-----------:|:---------------|:---------|:------------|:---------|:----------------|
+        |          3 | publico_202111 | SELECT … | my_datalake | nan      | nan             |
+        |         25 | book_202111    | SELECT … | my_datalake | nan      | nan             |
+        |         47 | url__202111    | nan      | nan         | https:// | {'param1': 1, … |
+        |         69 | publico_202111 | SELECT … | my_datalake | nan      | nan             |
+        |         91 | book_202111    | SELECT … | my_datalake | nan      | nan             |
+        |        113 | safra_202111   | SELECT … | my_datalake | nan      | nan             |
+
+        This method will iterate over each entry sequentially (not in
+        parallel) and call data_source_to_data() to each.
+
+        Returns a dict of DataFrames, as:
+
+            dict(
+                publico_202111 = pandas.DataFrame(…),
+                book_202111    = pandas.DataFrame(…),
+                …
+            )
+        """
+
+        results = dict()
+
+        for (sequence,datasource) in data_sources.iterrows():
+            entry = datasource.to_dict()
+
+            if pandas.isna(entry['query']):
+                del entry['query']
+                del entry['source']
+            elif pandas.isna(entry['url']):
+                del entry['url']
+                del entry['params']
+
+            name = entry['name']
+            del entry['name']
+
+            results[name] = self.data_source_to_data(name, entry)
+
+        self.log(f"Finished data extraction of the {data_sources.shape[0]} entries in group {group}")
+
+        return results
+
+
+
     def data_sources_to_data(self, data_sources: dict=None) -> dict:
         """
-        This method is called by Model.fit() right after DataProvider.get_dataset_sources_for_train()
-        or DataProvider.get_dataset_sources_for_batch_predict() returns a dict with queries.
-        These DP methods usually pre-process content of DP.train_data_sources and
-        DP.batch_predict_data_sources. DataProvider´s default implementation simply returns
-        the content of these dicts, without pre-processing.
+        This method is called by Model.fit() right after
+        DataProvider.get_dataset_sources_for_train() or
+        DataProvider.get_dataset_sources_for_batch_predict() returns a
+        dict with queries. These DP methods usually pre-process content
+        of DP.train_data_sources and DP.batch_predict_data_sources.
+        DataProvider’s default implementation simply returns the content
+        of these dicts, without pre-processing.
 
-        This method simply runs in parallel multiple Model.data_source_to_data(), which
-        is the method that really handles all database affairs, parquet cache, file naming etc.
+        This method simply runs in parallel multiple
+        Model.data_source_to_data(), which is the method that really
+        handles all database affairs, parquet cache, file naming etc.
 
-        Returns a dict with similar structure containing DataFrames with data returned
-        by these queries. Ready to be passed to DataProvider.clean_data().
+        Returns a dict with similar structure containing DataFrames with
+        data returned by these queries. Ready to be passed to
+        DataProvider.clean_data().
         """
 
         if data_sources is None:
             return None
 
-        collected_data=dict()
-
         # Define how many parallel workers to execute
-        # TODO: max workers should be by datasource type
         max_workers=self.get_config('PARALLEL_DATASOURCE_MAX_WORKERS', default=0, cast=int)
         if max_workers == '' or max_workers == 0:
             max_workers=None
-            self.log(f'Accessing all datasources in parallel')
-        else:
-            self.log(f'Accessing {max_workers} datasources in parallel')
 
-        # Iterate over all data sources, decide wether to use cache or execute query,
-        # save query data to cache if DATASOURCE_CACHE_PATH is set.
+        # Prepare the data extraction plan
+        data_extraction_plan = (
+            pandas.DataFrame(data_sources).T
+        
+            # Handle the name of data source, which will become the key
+            # to the resulting dataframe
+            .reset_index()
+            .rename(columns=dict(index='name'))
+        
+            # Order of data sources declared in the dict matters because
+            # of dependencies. Handle it.
+            .reset_index()
+            .rename(columns=dict(index='sequence'))
+        
+            .assign(
+                # Make sure we have all expected columns, even if they
+                # were not given by the user. Code ahead would break if
+                # columns simply do not exist, so fabricate them with
+                # NaNs.
+                query  = lambda table: table['query']  if 'query'  in table.columns else None,
+                source = lambda table: table['source'] if 'source' in table.columns else None,
+                url    = lambda table: table['url']    if 'url'    in table.columns else None,
+                params = lambda table: table['params'] if 'params' in table.columns else None,
+
+
+                # Group is a new feature. For backward compatibility we’ll
+                # use the sequence number as a group name, so each data
+                # source name will have its own group. In case we are
+                # using groups but only in a few data sources, entries
+                # without group names will get its sequence as group name.
+                group=lambda table: (
+                    (
+                        table.group
+                        if 'group' in table
+                        else table.sequence
+                    )
+                    .combine_first(table.sequence)
+                )
+            )
+
+
+            # Organize everything in the way we are going to process
+            .sort_values('group sequence'.split())
+        
+            .set_index('group sequence'.split())
+        
+            # .reset_index(level=1)
+        
+            # Now we are ready to iterate over each group in parallel and fire each of
+            # its data extraction in sequence.
+        )
+
+        self.log(
+            (
+                "Data extraction plan has {nentries} entries in {ngroups} "
+                "groups. {nquery} are typical database queries, {nurl} "
+                "are files or URLs. {parallel} groups will be executed "
+                "in parallel, but entries on each group will be executed "
+                "sequentially."
+            ).format(
+                nentries = data_extraction_plan.shape[0],
+                nquery   = data_extraction_plan['query'].count(),
+                nurl     = data_extraction_plan['url'].count(),
+                parallel = "All" if max_workers is None else max_workers,
+                ngroups  = len(
+                    data_extraction_plan
+                    .index
+                    .get_level_values(level=0)
+                    .unique()
+                ),
+            )
+        )
+
+        # Iterate over all data sources groups and fire
+        # data_sources_group_to_data() for each.
+        # PARALLEL_DATASOURCE_MAX_WORKERS defines how many groups will be
+        # executed in parallel. Data sources inside a single group are
+        # extracted sequentially, not in parallel.
+        collected_data=dict()
         with concurrent.futures.ThreadPoolExecutor(
                         thread_name_prefix='data_sources_to_data',
                         max_workers=max_workers
                 ) as e:
-            tasks={
-                # Submit all queries or cache data loading in parallel, track them in a
-                # dict comprehension.
-                e.submit(self.data_source_to_data, sourceid, data_sources[sourceid]): sourceid
-                for sourceid in data_sources.keys()
+
+            # Submit all groups to execute in parallel
+            tasks = {
+                e.submit(
+                    self.data_sources_group_to_data,
+                    group,
+                    data_extraction_plan.loc[group]
+                ): group
+                for group in data_extraction_plan.index.get_level_values(level=0).unique()
             }
 
             # Process results of all tasks as they finish
             for task in concurrent.futures.as_completed(tasks):
-                collected_data[tasks[task]]=task.result()
+                collected_data.update(task.result())
 
         return collected_data
 
@@ -2387,8 +2515,11 @@ class Model(object):
 
 
     def __getstate__(self):
-        # Be selective on what to pickle: exclude coach, logger and DataFrames used
-        # and generated throughout train and batch predict session.
+        """
+        Be selective on what to pickle: exclude coach, logger and
+        DataFrames used and generated throughout train and batch predict
+        session.
+        """
 
         attributes={
             # DataProvider

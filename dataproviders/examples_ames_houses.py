@@ -14,7 +14,7 @@ import pandas
 import sklearn.preprocessing
 import xingu
 
-class DPAmes(xingu.DataProvider):
+class DPAmesHouses(xingu.DataProvider):
     id='ames_house_prices'
 
 
@@ -40,6 +40,18 @@ class DPAmes(xingu.DataProvider):
 
 
     def clean_data_for_train(self, datasets: dict) -> pandas.DataFrame:
+        return (
+            datasets['ames_train']
+            .set_index('Id')
+
+            # The 2 points where GrLivArea>4000 and SalePrice<300000 are
+            # outliers; remove
+            .pipe(lambda table: table.drop(table.query("GrLivArea>4000 and SalePrice<300000").index))
+        )
+
+
+
+    def feature_engineering_for_train(self, df: pandas.DataFrame) -> pandas.DataFrame:
         def ddebug(input_df, message):
             self.log(message,level=logging.DEBUG)
             return input_df
@@ -113,12 +125,7 @@ class DPAmes(xingu.DataProvider):
         unk='_UNKNOWN'
 
         df = (
-            datasets['ames_train']
-            .set_index('Id')
-
-            # The 2 points where GrLivArea>4000 and SalePrice<300000 are
-            # outliers; remove
-            .pipe(lambda table: table.drop(table.query("GrLivArea>4000 and SalePrice<300000").index))
+            df
 
             # Convert columns to categorical and fill NaNs with whats in
             # the documentation
@@ -232,3 +239,7 @@ class DPAmes(xingu.DataProvider):
             df[f'numeric_{c}']=self.encoders[c].transform(df[c])
 
         return df
+
+
+
+
