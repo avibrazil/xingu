@@ -2458,6 +2458,17 @@ class Model(object):
                 ),
             )
         )
+        
+        self.log(
+            level=logging.DEBUG,
+            message=(
+                "Data extraction plan:\n" + (
+                    data_extraction_plan[['name','source','url']]
+                    .reset_index()
+                    .to_markdown()
+                )
+            )
+        )
 
         # Iterate over all data sources groups and fire
         # data_sources_group_to_data() for each.
