@@ -890,7 +890,8 @@ class Coach:
             databases=[i for i in [i.strip() for i in databases.split('|')] if i != '']
 
         # Process Xingu DB likewise with nickname 'xingu'
-        databases += ['xingu',self.get_config('XINGU_DB_URL')]
+        if nickname == 'xingu':
+            databases += ['xingu',self.get_config('XINGU_DB_URL')]
 
         if (len(databases) % 2) != 0:
             raise NotImplementedError('Malformed DATABASES environment. Format is "nick1|url1|nick2|url2".')
