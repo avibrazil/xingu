@@ -959,6 +959,54 @@ class Model(object):
 
 
 
+    def tag_model_plot(self, ax, template=None, loc='lower left', alpha=0.4, size=10):
+        """
+        Put a model signature with train metadata in your plot´s
+        matplotlib.Axes.
+        
+        Default text includes DataProvider ID, train IDs and time the model
+        was trained. You can change the text by passing a different
+        Python format()-ready text to `template` arg.
+        
+        Define signature position with `loc`, transparency with `alpha` and
+        text size with `size`.
+        See matplotlib.offsetbox.AnchoredText documentation for possible
+        locations.
+        
+        Returns the signed and modified Axes passed in the `ax` parameter.
+        """
+
+        import matplotlib
+
+        if template is None:
+            template='\n'.join(
+                [
+                    "DataProvider: {dp}",
+                    "Train: {complete_train_id}",
+                    "Trained: {trained}"
+                ]
+            )
+        
+        model_signature = matplotlib.offsetbox.AnchoredText(
+            prop=dict(size=size),
+            frameon=True,
+            loc=loc,
+            s=template.format(
+                dp=self.dp.id,
+                complete_train_id=self.get_full_train_id(),
+                trained=self.trained.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            ),
+        )
+
+        model_signature.patch.set_alpha(alpha)
+        model_signature.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+        
+        ax.add_artist(model_signature)
+        
+        return ax
+
+
+
     def render_trainsets_model_plots(self) -> dict:
         """
         Calls all render_trainsets_model_plots_{NAME}() from Model and
@@ -1140,32 +1188,19 @@ class Model(object):
                 ax         = (roc.ax_ if roc is not None else None)
             )
 
-        # Annotate with train data
-        import matplotlib
-        at = matplotlib.offsetbox.AnchoredText(
-                prop=dict(size=10),
-                frameon=True,
-                loc='upper left',
-                s='\n'.join(
-                    [
-                        "DataProvider: {dp}",
-                        "Train: {complete_train_id}",
-                        "Trained: {trained}"
-                    ]
-                ).format(
-                    dp=self.dp.id,
-                    complete_train_id=self.get_full_train_id(),
-                    trained=self.trained.strftime("%Y-%m-%d %H:%M:%S %Z"),
-                ),
-            )
-        # at.get_bbox().set(alpha=0.4)
-        at.patch.set_alpha(0.4)
-        at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-        roc.ax_.add_artist(at)
-
         roc.ax_.set_title("ROC and Area Under Curve")
 
-        return ({'ROC and AUC': roc.figure_} if roc is not None else None)
+        return (
+            {
+                'ROC and AUC': (
+                    self.tag_model_plot(
+                        roc.ax_,
+                        loc='upper left'
+                    )
+                    .get_figure()
+                )
+            } if roc is not None else None
+        )
 
 
 
@@ -2491,8 +2526,9 @@ class Model(object):
                 for group in data_extraction_plan.index.get_level_values(level=0).unique()
             }
 
-            # Process results of all tasks as they finish
             for task in concurrent.futures.as_completed(tasks):
+                # For each group that finished processing, get all resulting
+                # DataFrames at once
                 collected_data.update(task.result())
 
         return collected_data
