@@ -11,7 +11,7 @@ class Singleton(type):
         if cls not in cls._instances:
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
-    
+
 
 class ConfigManager(object, metaclass=Singleton):
     """
@@ -88,13 +88,13 @@ class ConfigManager(object, metaclass=Singleton):
                 return self.cache[config_item]
             else:
                 return cast(self.cache[config_item])
-            
+
         elif config_item.startswith(('AWS_PARAM:','AWS_SECRET:')):
             import boto3
-            
+
             if not hasattr(self,'parameter_store'):
                 self.parameter_store = boto3.client('ssm')
-                
+
             if not hasattr(self,'secrets_manager'):
                 self.secrets_manager = boto3.client('secretsmanager')
 
@@ -153,7 +153,7 @@ class ConfigManager(object, metaclass=Singleton):
         if value == ConfigManager.undefined and config_item in self.cache:
             del self.cache[config_item]
         else:
-            self.cache[config_item]=value
+            self.cache[config_item] = value
         return value
 
 
@@ -170,21 +170,21 @@ class ConfigManager(object, metaclass=Singleton):
 
         If value is ConfigManager.undefined, unset the variable(s).
         """
-        if isinstance(config_item,dict):
+        if isinstance(config_item, dict):
             for c in config_item.keys():
-                self.set(c,config_item[c])
-        elif isinstance(config_item,list) or isinstance(config_item,tuple):
+                self.set(c, config_item[c])
+        elif isinstance(config_item, list) or isinstance(config_item, tuple):
             for i in config_item:
-                self.set(i,value)
-        elif isinstance(config_item,str):
-#             ConfigManager.set_cache(config_item,value)
+                self.set(i, value)
+        elif isinstance(config_item, str):
+            self.set_cache(config_item, value)
             if value == ConfigManager.undefined:
                 if config_item in os.environ:
                     del os.environ[config_item]
             else:
-                if isinstance(value,str):
-                    os.environ[config_item]=value
+                if isinstance(value, str):
+                    os.environ[config_item] = value
                 elif value is None:
-                    os.environ[config_item]=''
+                    os.environ[config_item] = ''
                 else:
-                    os.environ[config_item]=str(value)
+                    os.environ[config_item] = str(value)

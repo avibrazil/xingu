@@ -191,7 +191,7 @@ def main():
     elif args['BATCH_PREDICT']:
         coach.team_batch_predict()
     else:
-        logger.info('Please use both or one of --batch-preditc and --train')
+        logger.info('Please use both or one of --batch-predict and --train')
 
 
 
