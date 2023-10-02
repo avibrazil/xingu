@@ -631,7 +631,7 @@ class Model(object):
 
     def save_batch_predict_estimations(self):
         if hasattr(self,'batch_predict_estimations'):
-            self.log('Save predicted prices to DB::estimations table')
+            self.log('Save predicted estimations to DB::estimations table')
 
             if self.estimator.is_classifier():
                 # predict_proba() returns multiple columns, one for each
@@ -669,12 +669,14 @@ class Model(object):
                     dataprovider_id  = self.dp.id,
                 )
 
+                # .sample(n=1000)
+
                 # Commit to DB
                 .to_sql(
+                    con          = self.coach.get_db_connection(),
                     name         = self.coach.tables['estimations'].name,
                     if_exists    = 'append',
                     index        = False,
-                    con          = self.coach.get_db_connection('xingu')
                 )
             )
 
@@ -1286,7 +1288,8 @@ class Model(object):
 
 
     def compute_batch_model_metrics_classical(self, XY: pandas.DataFrame, Y_pred: pandas.DataFrame) -> dict:
-        return self.compute_trainsets_model_metrics_classical(XY,Y_pred)
+        mask = ~XY[self.dp.get_target()].isna()
+        return self.compute_trainsets_model_metrics_classical(XY[mask],Y_pred[mask])
 
 
 
@@ -1916,7 +1919,7 @@ class Model(object):
 
         attr=list()
 
-        with self.coach.get_db_connection('xingu').begin() as conn:
+        with self.coach.get_db_connection().begin() as conn:
             if status == 'train_dataprep_start':
                 # train_dataprep_start is the first step of a training session, so
                 # take the chance to register also the overall train information
@@ -2042,7 +2045,7 @@ class Model(object):
                     file_level_messages.append(f"   {file[0]}: {file[1]}")
 
             import yaml
-            
+
             message=message.format(
                 dp=self.dp.id,
                 train_session_id=self.train_session_id,

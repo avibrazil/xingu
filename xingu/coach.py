@@ -834,12 +834,12 @@ class Coach:
     def get_db_connection(self, nickname='xingu'):
         if nickname in self.databases:
             return self.databases[nickname]['conn']
-        
+
         import sqlalchemy
 
         engine_config_sets=dict(
-            # Documentation for all these SQLAlchemy pool control
-            # parameters: https://docs.sqlalchemy.org/en/14/core/engines.html#engine-creation-api
+            # Documentation for all these SQLAlchemy pool control parameters:
+            # https://docs.sqlalchemy.org/en/14/core/engines.html#engine-creation-api
 
             DEFAULT=dict(
                 # QueuePool config for a real database
@@ -849,9 +849,12 @@ class Coach:
                 pool_size         = 5,
 
                 # Default here was 10, which might be low sometimes, so
-                # increase to some big number in order to neve let the
+                # increase to some big number in order to never let the
                 # QueuePool be a bottleneck.
                 max_overflow      = 50,
+
+                # Debug connection and all queries
+                # echo              = True
             ),
             sqlite=dict(
                 # SQLite doesn’t support concurrent writes, so we‘ll amend
@@ -948,18 +951,18 @@ class Coach:
                 url = current['url'],
                 **engine_config
             )
-            
+
             # DB Engine was just created; check if all tables are there
             if databases[i] == 'xingu':
-                self.init_db()
+                self.init_db(current['conn'])
 
-            self.logger.debug(f"Data source «{databases[i]}» is {self.databases[databases[i]]['conn']}")
+            self.logger.debug(f"Data source «{databases[i]}» is {current['conn']}. Created with config: {engine_config}.")
 
         return self.databases[nickname]['conn']
 
 
 
-    def init_db(self):
+    def init_db(self, con):
         if self.get_config('XINGU_DB_URL'):
             # This is just to raise an exception if not set.
             # Can't do Coach business without a DB.
@@ -967,9 +970,7 @@ class Coach:
 
         import sqlalchemy
 
-        self.logger.info('Going to create tables on Xingu DB')
-
-        self.xingu_db_metadata = sqlalchemy.MetaData(bind=self.get_db_connection('xingu'))
+        self.xingu_db_metadata = sqlalchemy.MetaData(bind=con)
 
         self.xingu_db_table_prefix=self.get_config('XINGU_DB_TABLE_PREFIX','')
 
@@ -1292,5 +1293,7 @@ class Coach:
             sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
             sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
+
+        self.logger.info('Going to create tables on Xingu DB')
 
         self.xingu_db_metadata.create_all()
