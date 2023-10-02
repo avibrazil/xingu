@@ -124,7 +124,7 @@ class Coach:
 
     def trained_ids(self):
         """
-        Return a set of just the IDs of what we have in our inventory of trained Robsons
+        Return a set of just the IDs of what we have in our inventory of trained Models
         """
         return self.trained.keys()
 
@@ -276,7 +276,7 @@ class Coach:
 
     def team_train(self):
         """
-        Train and post-process Robsons for all DPs requested.
+        Train and post-process Models for all DPs requested.
 
         After an estimator is trained, it enters the post-process phase, which
         executes the following:
@@ -314,7 +314,7 @@ class Coach:
                 # Initialize a queue for post-train activities
                 self.post_train_queue=queue.Queue()
 
-                # Let everybody know we are post-processing trained Robsons
+                # Let everybody know we are post-processing trained Models
                 self.post_processing=True
 
                 # Start post-processing
@@ -357,7 +357,7 @@ class Coach:
 
     def post_train_parallel(self):
         """
-        Listens to trained Robsons and fire post-process tasks such as saving model,
+        Listens to trained Models and fire post-process tasks such as saving model,
         saving data, batch predict, metrics computation etc.
         """
 
@@ -466,9 +466,9 @@ class Coach:
         max_workers=self.get_config('PARALLEL_POST_PROCESS_MAX_WORKERS', default=0, cast=int)
         if max_workers == '' or max_workers == 0:
             max_workers=None
-            self.logger.info(f'Using all possible Robsons in parallel')
+            self.logger.info(f'Using all possible Models in parallel')
         else:
-            self.logger.info(f'Using no more than {max_workers} Robsons in parallel')
+            self.logger.info(f'Using no more than {max_workers} Models in parallel')
 
         # All models in place, so now batch predict in parallel
         with concurrent.futures.ThreadPoolExecutor(
