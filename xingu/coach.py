@@ -450,7 +450,8 @@ class Coach:
             tasks.append(executor.submit(model.compute_and_save_metrics,'batch'))
 
             # Task 2: save estimations
-            tasks.append(executor.submit(model.save_batch_predict_estimations))
+            if self.get_config('BATCH_PREDICT_SAVE_ESTIMATIONS', default=False, cast=bool):
+                tasks.append(executor.submit(model.save_batch_predict_estimations))
 
             for task in concurrent.futures.as_completed(tasks):
                 # Does nothing if thread succeeded. Raises the task's exception otherwise.

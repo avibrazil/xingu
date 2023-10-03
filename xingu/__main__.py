@@ -109,6 +109,10 @@ def prepare_args():
         default=ConfigManager().get('BATCH_PREDICT',default=True, cast=bool),
         help='Set if you want to batch predict data, which is required for many metrics computations. If --no-train, use pre-trained models from TRAINED_MODELS_PATH. Overwrites BATCH_PREDICT env.')
 
+    parser.add_argument('--batch-predict-save-estimations', dest='BATCH_PREDICT_SAVE_ESTIMATIONS', action=argparse.BooleanOptionalAction,
+        default=ConfigManager().get('BATCH_PREDICT_SAVE_ESTIMATIONS',default=False, cast=bool),
+        help='Set if you want to save to Xingu DB the batch predict estimations. Default is not to save. Batch predict metrics will always be saved. Overwrites BATCH_PREDICT_SAVE_ESTIMATIONS env.')
+
     parser.add_argument('--dvc', dest='DVC', action=argparse.BooleanOptionalAction,
         default=ConfigManager().get('DVC',default=True, cast=bool),
         help='If --no-dvc, disables all DVC operations regardless of what other DVC-related variables have. Overwrites DVC env.')

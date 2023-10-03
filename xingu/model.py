@@ -669,8 +669,6 @@ class Model(object):
                     dataprovider_id  = self.dp.id,
                 )
 
-                # .sample(n=1000)
-
                 # Commit to DB
                 .to_sql(
                     con          = self.coach.get_db_connection(),
