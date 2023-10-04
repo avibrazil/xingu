@@ -1205,7 +1205,6 @@ class Model(object):
 
 
     def save_model_metrics(self, channel='trainsets'):
-        self.context='model_metrics'
         self.log_train_status(f'model_{channel}_metrics_start')
 
         metrics = self.compute_model_metrics(channel)
@@ -1270,7 +1269,7 @@ class Model(object):
                             ),
                             dpi = 300,
                             bbox_inches = 'tight',
-                            transparent = True
+                            # transparent = True
                         )
 
         self.log_train_status(f'model_{channel}_metrics_end')
