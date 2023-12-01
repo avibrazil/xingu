@@ -11,33 +11,33 @@ class Estimator(object):
     - Concrete class might have multiple (20) encapsulated predictors for bagging/ensamble.
     """
 
-    
-    hyperparam = dict()
+    default_params = dict()
+    default_hyperparams = dict()
 
-
-
-    def __init__(self,hyperparams=None):
+    def __init__(self, params: dict=None, hyperparams: dict=None, **kwargs):
         self.setup_logger()
-        self.hyperparam=hyperparams
+
+        self.params=params or self.default_params
+        self.hyperparams=hyperparams or self.default_hyperparams
 
 
 
-    def hyperparam_optimize(self, datasets: dict, features: list, target: str, search_space: dict) -> dict:
+    def hyperparam_optimize(self, datasets: dict, model) -> dict:
         # Please implement in a concrete class
         pass
 
 
 
-    def hyperparam_exchange(self, hyperparam: dict=None) -> dict:
+    def hyperparam_exchange(self, params: dict=None, hyperparams: dict=None) -> dict:
         """
-        If None is passed, simply return estimator's current hyperparam.
-        Set hyperparam otherwise.
+        If None is passed, simply return estimator's current hyperparams.
+        Set hyperparams otherwise.
         """
 
-        if hyperparam is not None:
-            self.hyperparam=hyperparam
+        if hyperparams is not None:
+            self.hyperparams=hyperparams
 
-        return self.hyperparam
+        return self.hyperparams
 
 
 
@@ -70,9 +70,9 @@ class Estimator(object):
 
     def is_classifier(self):
         pass
+
     
-    
-    
+
     def __repr__(self):
         return '{klass}()'.format(klass=type(self).__name__)
 
@@ -81,7 +81,10 @@ class Estimator(object):
     def __getstate__(self):
         # Do not serialize the logger
         return dict(
-            hyperparam      = self.hyperparam,
+            default_params      = self.default_params,
+            default_hyperparams = self.default_hyperparams,
+            params              = self.params,
+            hyperparams         = self.hyperparams,
         )
 
 
@@ -99,12 +102,5 @@ class Estimator(object):
             level,
             message
         )
-
-
-
-
-
-
-
 
 

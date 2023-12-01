@@ -32,10 +32,8 @@ class DataProvider(object):
     random_state:                  int    = 42
     test_size:                     float  = 0.1
     val_size:                      float  = 0.2
-    train_split_days:              int    = 150
-    date_column_name:              str    = 'date'
 
-    ###########################################################
+    ###########################################################################
     ###
     ###   Attributes for the Estimator
     ###
@@ -48,19 +46,39 @@ class DataProvider(object):
     # The (hyper)params is what a SciKit estimator gets in its
     # __init__() method. They are of 2 types:
     #
-    #  - estimation quality parameters (those that are tunned and are commonly called hyper-parameters)
+    #  - estimation quality parameters (those that are tunned and are commonly
+    #      called hyper-parameters)
     #  - operational parameters (control operation, verbosity etc)
     #
-    # estimator_hyperparams + estimator_params is what is used to initialize the object.
-    # We are separating them here because estimator_hyperparams will be optimized while
-    # estimator_params are kind of fixed.
+    # estimator_hyperparams + estimator_params is what is used to initialize
+    # the object. Like:
+    #     XGBClassifier(**estimator_params,**estimator_hyperparams)
     #
-    ###########################################################
+    # We are separating them here because estimator_hyperparams will be
+    # optimized while estimator_params are kind of fixed.
+    #
+    # estimator_hyperparams_search_space and estimator_hyperparams usually
+    # contain same keys. The search_space has value ranges and semantics
+    # determined by your optimization framework as optuna or skopt.
+    #
+    # The estimator_class_params is random parameters for the xingu.Estimator
+    # class.
+    #
+    # A xingu.Estimator class will be initialized by xingu.Model like this:
+    #
+    #    xingu.Estimator(
+    #         **DataProvider.estimator_class_params,
+    #         params      = DataProvider.estimator_params,
+    #         hyperparams = DataProvider.estimator_hyperparams,
+    #    )
+    #
+    ###########################################################################
 
     estimator_class:                      type   = Estimator
-    estimator_hyperparams:                dict   = dict()
+    estimator_class_params:               dict   = dict()
     estimator_params:                     dict   = dict()
-    estimator_hyperparam_search_space:    dict   = dict()
+    estimator_hyperparams:                dict   = dict()
+    estimator_hyperparams_search_space:   dict   = dict()
 
 
     ###########################################################
@@ -158,38 +176,26 @@ class DataProvider(object):
 
     
     
-    def get_estimator_optimization_search_space(self) -> dict:
-        if hasattr(self,'estimator_hyperparam_search_space'):
-            return self.estimator_hyperparam_search_space
-        else:
-            return None
-
-    
-    
-    def get_estimator_parameters(self) -> dict:
-        """
-        Return a dict with parameters expected by xingu.Estimator::__init__()
-        A xingu.Estimator() class and derivates has the `hyperparams` attribute
-        which is the list of parameters that is passed to self.estimator_class()::__init__()
-
-        Derived classes of this DP might extend this method to add more initialization
-        items to the used xingu.Estimator()
-        """
-        return dict(
-            hyperparams=self.get_estimator_hyperparameters()
-        )
+    def get_estimator_class_params(self) -> dict:
+        return self.estimator_class_params
 
 
 
-    def get_estimator_hyperparameters(self) -> dict:
-        # Must return a dict with parameters expected by self.estimator_class()::__init__()
-        return dict(
-            **self.estimator_hyperparams,
-            **self.estimator_params
-        )
+    def get_estimator_params(self) -> dict:
+        return self.estimator_params
+
+
+
+    def get_estimator_hyperparams(self) -> dict:
+        return self.estimator_hyperparams
 
 
         
+    def get_estimator_optimization_search_space(self) -> dict:
+        return self.estimator_hyperparams_search_space
+
+
+
     def post_process_after_train(self, model):
         """
         Called after estimator was trained but before PKL is saved or metrics computed.
@@ -442,37 +448,16 @@ class DataProvider(object):
 
 
 
-    def data_split_for_train(self, data: pandas.DataFrame):
+    def data_split_for_train(self, data: pandas.DataFrame) -> dict:
         """
-        Convenience default implementation that will be called by Model.fit() method.
-        Your DataProvider may implement something different.
+        Split data before train.
+        Implement in your DataProvider.
 
-        Splits data in 3 parts:
-
-        - train: all data prior self.train_split_days from now
-        - val: self.val_size proportion extracted from train data
-        - test: data which self.date_column is in the last self.train_split_days
-
-        If self.train_split_days is 150, test will contain last 150 days of data, train
-        will contain all the rest except val data.
-
+        Must return a dict of dataframes. The key named 'train' will be used
+        for training. Other dataframes can be used for metrics computation or
+        other purposes in your DataFrame.
         """
-        from sklearn.model_selection import train_test_split
-
-        train, test = DataProvider.time_data_split(
-            data,
-            date_column       = self.date_column_name,
-            delta_time_days   = self.train_split_days
-        )
-
-        train, val = train_test_split(
-            train,
-            test_size         = self.val_size,
-            random_state      = self.random_state
-        )
-
-        return (train, val, test)
-
+        pass
 
 
     ####################################################################
@@ -529,19 +514,18 @@ class DataProvider(object):
 
     def __getstate__(self):
         return dict(
-            x_features                      = self.x_features,
-            x_estimator_features            = self.x_estimator_features,
-            y                               = self.y,
-            estimator_class                 = self.estimator_class,
-            estimator_bagging_size          = self.estimator_bagging_size,
-            estimator_hyperparams           = self.estimator_hyperparams,
-            estimator_hyperparam_search_space = self.estimator_hyperparam_search_space,
-            train_dataset_sources           = self.train_dataset_sources,
-            batch_predict_dataset_sources   = self.batch_predict_dataset_sources,
-            random_state                    = self.random_state,
-            test_size                       = self.test_size,
-            val_size                        = self.val_size,
-            train_split_days                = self.train_split_days,
-            date_column_name                = self.date_column_name,
-            hollow                          = self.hollow
+            x_features                         = self.x_features,
+            x_estimator_features               = self.x_estimator_features,
+            y                                  = self.y,
+            estimator_class                    = self.estimator_class,
+            estimator_class_params             = self.estimator_class_params,
+            estimator_params                   = self.estimator_params,
+            estimator_hyperparams              = self.estimator_hyperparams,
+            estimator_hyperparams_search_space = self.estimator_hyperparams_search_space,
+            train_dataset_sources              = self.train_dataset_sources,
+            batch_predict_dataset_sources      = self.batch_predict_dataset_sources,
+            random_state                       = self.random_state,
+            test_size                          = self.test_size,
+            val_size                           = self.val_size,
+            hollow                             = self.hollow,
         )

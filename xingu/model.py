@@ -171,7 +171,11 @@ class Model(object):
             if self.dp.hollow:
                 self.estimator     = None
             else:
-                self.estimator     = self.dp.get_estimator_class()(**self.dp.get_estimator_parameters())
+                self.estimator     = self.dp.get_estimator_class()(
+                    **self.dp.get_estimator_class_params(),
+                    params      = self.dp.get_estimator_params(),
+                    hyperparams = self.dp.get_estimator_hyperparams(),
+                )
 
         if delayed_prereq_binding is False:
             self.load_pre_req_model()
@@ -193,10 +197,11 @@ class Model(object):
         This is controlled by self.hyperopt_strategy, which can be:
 
         - self -- compute hyperparameters optimization
-        - last -- search Model DB for last computed hyperparams for this DataProvider
+        - last -- search Model DB for last computed hyperparams for this
+            DataProvider
         - dp -- use hyperparams as returned by self.dp.get_estimator_hyperparameters()
-        - a train name -- load from Model DB the previously computed hyperparams used on
-             a specific train_id
+        - a train name -- load from Xingu DB the previously computed
+            hyperparams used on a specific train_id
         """
 
         self.context='train_hyperopt'
@@ -214,39 +219,40 @@ class Model(object):
 
             self.log(message='Hyperparameter optimization...')
 
+            # This single call takes a long time to process
             h=self.estimator.hyperparam_optimize(
-                datasets     = self.sets,
-                features     = self.dp.get_estimator_features_list(),
-                target       = self.dp.get_target(),
-                search_space = self.dp.get_estimator_optimization_search_space()
+                model          = self
+                # datasets     = self.sets,
+                # features     = self.dp.get_estimator_features_list(),
+                # target       = self.dp.get_target(),
+                # search_space = self.dp.get_estimator_optimization_search_space()
             )
 
-            self.hyperparam=dict(
-                source_train_id=self.hyperopt_strategy,
-                hyperparam=h
+            self.algo_params = dict(
+                source_train_id = self.hyperopt_strategy,
+                params          = self.dp.get_estimator_params() or self.estimator.params,
+                hyperparams     = h,
             )
 
             self.log_train_status('train_hyperopt_end')
 
 
         elif self.hyperopt_strategy == 'dp':
-            # Get from DataProvider
+            # DataProvider defines algorithm parameters and hyperparameters
 
-            hyperparam=self.dp.get_estimator_hyperparameters()
-
-            if hyperparam is not None:
-                self.hyperparam=dict(
-                    source_train_id=self.hyperopt_strategy,
-                    hyperparam=hyperparam
-                )
+            self.algo_params = dict(
+                source_train_id = self.hyperopt_strategy,
+                params          = self.dp.get_estimator_params() or self.estimator.params,
+                hyperparams     = self.dp.get_estimator_hyperparams() or self.estimator.hyperparams,
+            )
 
 
         elif self.hyperopt_strategy is not None:
             # Get from DB last computed hyper-parameters for this DP or a specific train_id.
-            
+
             import sqlalchemy
 
-            # Table shortcuts for readability
+            # Table shortcuts for code readability
             attributes = self.coach.tables['training_attributes']
             steps      = self.coach.tables['training_steps']
 
@@ -291,25 +297,29 @@ class Model(object):
 
             self.log(
                 level=logging.DEBUG,
-                message='Searching DB for optimized hyperparameters as: ' + query.compile(compile_kwargs={'literal_binds': True}).string
+                message=(
+                    'Searching DB for optimized hyperparameters as:\n' +
+                    query.compile(compile_kwargs={'literal_binds': True}).string
+                )
             )
 
             dbresult = query.execute().first()
 
             if dbresult is not None:
                 # Import the JSON text into a dict
-                self.hyperparam=json.loads(dbresult.value)
+                self.algo_params=json.loads(dbresult.value)
 
-                if self.hyperparam['source_train_id']=='self':
+                if self.algo_params['source_train_id']=='self':
                     # Give credit for the source of hyper-params
-                    self.hyperparam['source_train_id']=dbresult.train_id
+                    self.algo_params['source_train_id']=dbresult.train_id
 
         # At this point we have hyperparam self-computed, or retrieved from DB, or None
-        if self.hyperparam is None:
+        if self.algo_params is None:
             # If still None, get defaults from estimator
-            self.hyperparam=dict(
-                source_train_id='default',
-                hyperparam=self.estimator.hyperparam_exchange()
+            self.algo_params=dict(
+                source_train_id = 'default',
+                params          = self.estimator.params,
+                hyperparams     = self.estimator.hyperparams,
             )
         else:
             # If we have something, set it on xingu.Estimator as an ordered
@@ -317,14 +327,20 @@ class Model(object):
             # - DataProvider default paramters (including operational ones)
             # - Searched or found parameters
             # The last ones overwrite the first ones
-            self.estimator.hyperparam_exchange(
-                {
-                    i[0]:i[1]
-                    for i in
-                    list(self.dp.get_estimator_hyperparameters().items()) +
-                    list(self.hyperparam['hyperparam'].items())
-                }
-            )
+
+            self.estimator.params = {
+                i[0]:i[1]
+                for i in
+                list(self.dp.get_estimator_params().items()) +
+                list(self.algo_params['params'].items())
+            }
+
+            self.estimator.hyperparams = {
+                i[0]:i[1]
+                for i in
+                list(self.dp.get_estimator_hyperparams().items()) +
+                list(self.algo_params['hyperparams'].items())
+            }
 
         self.log_train_status('train_hyperhandle_end')
 
@@ -401,7 +417,7 @@ class Model(object):
             self.hyperparam_optimize()
 
             self.log(
-                message=f"Hyperopt parameters from {self.hyperparam['source_train_id']}:\n" + pandas.Series(self.hyperparam['hyperparam']).to_markdown(),
+                message=f"Hyperopt parameters from {self.algo_params['source_train_id']}:\n" + pandas.Series(self.algo_params['hyperparams']).to_markdown(),
                 level=logging.DEBUG
             )
 
@@ -568,44 +584,45 @@ class Model(object):
             self.context='train_savesets'
             self.log_train_status('train_savesets_start')
 
-            # Record sets in DB
-            for part in self.sets.keys():
-                self.log(f'Saving {part} dataset to DB')
+            with self.coach.get_db_connection('xingu').connect() as db:
+                # Record sets in DB
+                for part in self.sets.keys():
+                    self.log(f'Saving {part} dataset to DB')
 
-                target=self.dp.get_target()
-                if target in self.sets[part].columns:
-                    (
-                        # Start with just the index and target column
-                        self.sets[part][[target]]
+                    target=self.dp.get_target()
+                    if target in self.sets[part].columns:
+                        (
+                            # Start with just the index and target column
+                            self.sets[part][[target]]
 
-                        # Standardize target column name
-                        .rename(columns={target: 'target'})
+                            # Standardize target column name
+                            .rename(columns={target: 'target'})
 
-                        # Tag table with context
-                        .assign(
-                            set                = part,
-                            dataprovider_id    = self.dp.id,
-                            train_id           = self.train_id,
-                            train_session_id   = self.train_session_id,
+                            # Tag table with context
+                            .assign(
+                                set                = part,
+                                dataprovider_id    = self.dp.id,
+                                train_id           = self.train_id,
+                                train_session_id   = self.train_session_id,
+                            )
+
+                            # Standardize index
+                            .reset_index(names='index')
+
+                            # Write debug message to console
+                            .pipe(lambda table: ddebug(
+                                table,
+                                f'{part}: {table.shape[0]}×{table.shape[1]}'
+                            ))
+
+                            # Commit to DB
+                            .to_sql(
+                                self.coach.tables['sets'].name,
+                                if_exists='append',
+                                index=False,
+                                con=db
+                            )
                         )
-
-                        # Standardize index
-                        .reset_index(names='index')
-
-                        # Write debug message to console
-                        .pipe(lambda table: ddebug(
-                            table,
-                            f'{part}: {table.shape[0]}×{table.shape[1]}'
-                        ))
-
-                        # Commit to DB
-                        .to_sql(
-                            self.coach.tables['sets'].name,
-                            if_exists='append',
-                            index=False,
-                            con=self.coach.get_db_connection('xingu')
-                        )
-                    )
 
             self.log_train_status('train_savesets_end')
 
@@ -643,40 +660,41 @@ class Model(object):
             else:
                 estimation_col='estimation'
 
-            (
-                self.batch_predict_estimations
+            with self.coach.get_db_connection().connect() as db:
+                (
+                    self.batch_predict_estimations
 
-                # Work on a shallow copy
-                .copy(deep=False)
+                    # Work on a shallow copy
+                    .copy(deep=False)
 
-                .assign(
-                    # Decide about which estimation column to use
-                    # (in case of a classifier)
-                    estimation       = lambda table: table[estimation_col],
+                    .assign(
+                        # Decide about which estimation column to use
+                        # (in case of a classifier)
+                        estimation       = lambda table: table[estimation_col],
+                    )
+
+                    # Standardize index
+                    .reset_index(names='index')
+
+                    # Only want these columns
+                    [['index', 'estimation']]
+
+                    .assign(
+                        # Tag rows with context
+                        time             = round(self.batch_predict_time.timestamp()),
+                        train_id         = self.train_id,
+                        train_session_id = self.train_session_id,
+                        dataprovider_id  = self.dp.id,
+                    )
+
+                    # Commit to DB
+                    .to_sql(
+                        con          = db,
+                        name         = self.coach.tables['estimations'].name,
+                        if_exists    = 'append',
+                        index        = False,
+                    )
                 )
-
-                # Standardize index
-                .reset_index(names='index')
-
-                # Only want these columns
-                [['index', 'estimation']]
-
-                .assign(
-                    # Tag rows with context
-                    time             = round(self.batch_predict_time.timestamp()),
-                    train_id         = self.train_id,
-                    train_session_id = self.train_session_id,
-                    dataprovider_id  = self.dp.id,
-                )
-
-                # Commit to DB
-                .to_sql(
-                    con          = self.coach.get_db_connection(),
-                    name         = self.coach.tables['estimations'].name,
-                    if_exists    = 'append',
-                    index        = False,
-                )
-            )
 
 
 
@@ -963,16 +981,16 @@ class Model(object):
         """
         Put a model signature with train metadata in your plot´s
         matplotlib.Axes.
-        
+
         Default text includes DataProvider ID, train IDs and time the model
         was trained. You can change the text by passing a different
         Python format()-ready text to `template` arg.
-        
+
         Define signature position with `loc`, transparency with `alpha` and
         text size with `size`.
         See matplotlib.offsetbox.AnchoredText documentation for possible
         locations.
-        
+
         Returns the signed and modified Axes passed in the `ax` parameter.
         """
 
@@ -986,7 +1004,7 @@ class Model(object):
                     "Trained: {trained}"
                 ]
             )
-        
+
         model_signature = matplotlib.offsetbox.AnchoredText(
             prop=dict(size=size),
             frameon=True,
@@ -1000,9 +1018,9 @@ class Model(object):
 
         model_signature.patch.set_alpha(alpha)
         model_signature.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-        
+
         ax.add_artist(model_signature)
-        
+
         return ax
 
 
@@ -1215,26 +1233,27 @@ class Model(object):
                 the_time=round(self.batch_predict_time.timestamp())
 
             self.log('Saving model metrics to DB')
+            
+            with self.coach.get_db_connection('xingu').connect() as db:
+                (
+                    metrics
 
-            (
-                metrics
+                    # Tag metrics with IDs of this training session
+                    .assign(
+                        time              = the_time,
+                        dataprovider_id   = self.dp.id,
+                        train_session_id  = self.train_session_id,
+                        train_id          = self.train_id
+                    )
 
-                # Tag metrics with IDs of this training session
-                .assign(
-                    time              = the_time,
-                    dataprovider_id   = self.dp.id,
-                    train_session_id  = self.train_session_id,
-                    train_id          = self.train_id
+                    # Save metrics to DB
+                    .to_sql(
+                        name           = self.coach.tables['metrics_model'].name,
+                        if_exists      = 'append',
+                        index          = False,
+                        con            = db
+                    )
                 )
-
-                # Save metrics to DB
-                .to_sql(
-                    name           = self.coach.tables['metrics_model'].name,
-                    if_exists      = 'append',
-                    index          = False,
-                    con            = self.coach.get_db_connection('xingu')
-                )
-            )
 
         plots = self.render_model_plots(channel)
 
@@ -1368,12 +1387,13 @@ class Model(object):
 
                 self.log(f'Save estimations metrics to DB')
 
-                metrics.reset_index(names='index').to_sql(
-                    name         = self.coach.tables['metrics_estimation'].name,
-                    if_exists    = 'append',
-                    index        = False,
-                    con=self.coach.get_db_connection('xingu')
-                )
+                with self.coach.get_db_connection('xingu').connect() as db:
+                    metrics.reset_index(names='index').to_sql(
+                        name         = self.coach.tables['metrics_estimation'].name,
+                        if_exists    = 'append',
+                        index        = False,
+                        con          = db
+                    )
 
 
 
@@ -1954,7 +1974,7 @@ class Model(object):
                 if a=='x_features' and len(self.dp.get_features_list())>0:
                     value=json.dumps(self.dp.get_features_list())
                 elif a=='hyperparam':
-                    value=json.dumps(self.hyperparam)
+                    value=json.dumps(self.algo_params)
                 elif hasattr(self,a) and getattr(self,a) is not None:
                     value=str(getattr(self,a))
                 else:
@@ -2158,10 +2178,13 @@ class Model(object):
         )
 
         # Hit the database
-        return pandas.read_sql_query(
-            sql = query_text,
-            con = self.coach.get_db_connection(con_nickname)
-        )
+        with self.coach.get_db_connection(con_nickname).connect() as db:
+            table = pandas.read_sql_query(
+                sql = query_text,
+                con = db
+            )
+        
+        return table
 
 
 
