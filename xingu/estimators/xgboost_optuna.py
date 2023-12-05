@@ -131,7 +131,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
             direction='maximize'
         )
 
-        optimizer.optimize(lambda trial: objective(trial,model), n_trials=self.optimization_trials)
+        optimizer.optimize(lambda trial: objective(trial, model), n_trials=self.optimization_trials)
 
         # for i in range(20):
         #     ntrials = len(optimizer.trials)

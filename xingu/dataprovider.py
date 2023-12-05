@@ -170,12 +170,12 @@ class DataProvider(object):
         return data
 
 
-    
+
     def get_estimator_class(self) -> type:
         return self.estimator_class
 
-    
-    
+
+
     def get_estimator_class_params(self) -> dict:
         return self.estimator_class_params
 
@@ -190,7 +190,7 @@ class DataProvider(object):
         return self.estimator_hyperparams
 
 
-        
+
     def get_estimator_optimization_search_space(self) -> dict:
         return self.estimator_hyperparams_search_space
 
@@ -218,7 +218,7 @@ class DataProvider(object):
         """
         Virtual method to be implemented in concrete DPs in case your pre-processing is
         the same for predict() and predict_proba().
-        
+
         If pre-processing is not the same for these methods, implement both
         pre_process_for_predict() and pre_process_for_predict_proba()
         """
@@ -230,74 +230,74 @@ class DataProvider(object):
         """
         Virtual method to be implemented in concrete DPs in case your post-processing is
         the same for predict() and predict_proba().
-        
+
         If post-processing is not the same for these methods, implement both
         post_process_after_predict() and post_process_after_predict_proba()
         """
         return Y_pred
 
-    
-    
+
+
     def pre_process_for_predict(self, X: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Called by Model.generic_predict() right before X is passed to its internal
         estimator to compute Ŷ.
-        
+
         Your implementation may modify X completely, and what you return here
         will be passed to Model's internal estimator.
-        
+
         The abstract implementation here does nothing.
         """
         return self.pre_process_for_generic_predict(X,model)
-    
-    
-    
+
+
+
     def post_process_after_predict(self, X: pandas.DataFrame, Y_pred: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Called by Model.pred_dist() right after Ŷ (Y_pred) is computed.
-        
+
         X is whatever you returned in pre_process_for_pred_dist().
-        
+
         Your implementation may modify Y_pred completely, and what you return here
         will be returned to Model caller.
-        
+
         The abstract implementation here does nothing.
         """
         return self.post_process_after_generic_predict(X,Y_pred,model)
 
 
-    
+
     def pre_process_for_predict_proba(self, X: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Called by Model.generic_predict() right before X is passed to its internal
         estimator to compute Ŷ.
-        
+
         Your implementation may modify X completely, and what you return here
         will be passed to Model's internal estimator.
-        
+
         The abstract implementation here does nothing.
         """
         return self.pre_process_for_generic_predict(X,model)
-    
-    
-    
+
+
+
     def post_process_after_predict_proba(self, X: pandas.DataFrame, Y_pred: pandas.DataFrame, model) -> pandas.DataFrame:
         """
         Called by Model.pred_dist() right after Ŷ (Y_pred) is computed.
-        
+
         X is whatever you returned in pre_process_for_pred_dist().
-        
+
         Your implementation may modify Y_pred completely, and what you return here
         will be returned to Model caller.
-        
+
         The abstract implementation here does nothing.
         """
         return self.post_process_after_generic_predict(X,Y_pred,model)
-    
-    
 
-    
-    
+
+
+
+
     ###########################################################
     ###
     ###   Generic methods used as is by all derived classes.
@@ -377,7 +377,7 @@ class DataProvider(object):
     def get_target(self) -> str:
         return self.y
 
-    
+
 
     def __repr__(self) -> str:
         return '{klass}(id={id})'.format(id=self.id, klass=type(self).__name__)
