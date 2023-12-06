@@ -1,3 +1,4 @@
+import dataclasses
 import inspect
 import logging
 import datetime
@@ -5,6 +6,7 @@ import pandas
 
 from .estimator import Estimator
 
+@dataclasses.dataclass
 class DataProvider(object):
 
     ###########################################################
@@ -13,13 +15,13 @@ class DataProvider(object):
     ###
     ###########################################################
 
-    # id:                          str    = (must be defined in derived classes)
-    x_features:                    list   = []
-    x_estimator_features:          list   = []
-    y:                             str    = None
-    train_dataset_sources:         dict   = None
-    batch_predict_dataset_sources: dict   = None
-    hollow:                        bool   = False
+    id:                            str    = dataclasses.field(default=None)
+    x_features:                    list   = dataclasses.field(default_factory=list)
+    x_estimator_features:          list   = dataclasses.field(default_factory=list)
+    y:                             str    = dataclasses.field(default=None)
+    train_dataset_sources:         dict   = dataclasses.field(default_factory=dict)
+    batch_predict_dataset_sources: dict   = dataclasses.field(default_factory=dict)
+    hollow:                        bool   = dataclasses.field(default=False)
 
 
 
@@ -29,9 +31,9 @@ class DataProvider(object):
     ###
     ###########################################################
 
-    random_state:                  int    = 42
-    test_size:                     float  = 0.1
-    val_size:                      float  = 0.2
+    random_state:                  int    = dataclasses.field(default=42)
+    test_size:                     float  = dataclasses.field(default=0.1)
+    val_size:                      float  = dataclasses.field(default=0.2)
 
     ###########################################################################
     ###
@@ -75,10 +77,10 @@ class DataProvider(object):
     ###########################################################################
 
     estimator_class:                      type   = Estimator
-    estimator_class_params:               dict   = dict()
-    estimator_params:                     dict   = dict()
-    estimator_hyperparams:                dict   = dict()
-    estimator_hyperparams_search_space:   dict   = dict()
+    estimator_class_params:               dict   = dataclasses.field(default_factory=dict)
+    estimator_params:                     dict   = dataclasses.field(default_factory=dict)
+    estimator_hyperparams:                dict   = dataclasses.field(default_factory=dict)
+    estimator_hyperparams_search_space:   dict   = dataclasses.field(default_factory=dict)
 
 
     ###########################################################
@@ -87,10 +89,30 @@ class DataProvider(object):
     ###
     ###########################################################
 
-    batch_predict_strategy = dict(
-        method='predict',
-        params=dict()
-    )
+    # For classification models, the index of predict_proba result tha matches
+    # the training target
+    proba_class_index:                    int    = dataclasses.field(default=0)
+
+
+    ###########################################################
+    ###
+    ###   Methods to post-process what dataclass left for us
+    ###
+    ###########################################################
+
+    def __post_init__(self):
+        if type(self.estimator_class) == str:
+            # Convert an estimator class string into its real class.
+            # For example, the string 'xingu.estimators.xgboost_optuna.XinguXGBoostClassifier'
+            # will be converted to its real class.
+            import importlib
+
+            mod=importlib.import_module('.'.join(self.estimator_class.split('.')[:-1]))
+            self.estimator_class=getattr(mod,self.estimator_class.split('.')[-1])
+
+        if issubclass(self.estimator_class, Estimator)==False:
+            raise RuntimeError(f"Invalid class: {self.estimator_class}. Must be subclass of xingu.Estimator.")
+
 
     ###########################################################
     ###
@@ -106,15 +128,31 @@ class DataProvider(object):
 
             {
                 'NAME_OF_DATASET1': pandas.DataFrame,
-                'NAME_OF_DATASET2': pandas.DataFrame
+                'NAME_OF_DATASET2': pandas.DataFrame,
+                ...
             }
 
         This method needs to integrate all these DataFrames and return a single
-        DataFrame already cleaned up.
+        DataFrame with minimum cleanup.
 
-        This must be implemented on a derived class.
+        Provides a default implementation that simply concatenates all
+        datasets. This is probably very wrong for your DataProvider, so please
+        reaimplement.
         """
-        return pandas.DataFrame()
+        result = None
+
+        for d in datasets:
+            if result is None:
+                result = datasets[d]
+            else:
+                result = pandas.concat(
+                    [
+                        result,
+                        datasets[d]
+                    ]
+                )
+
+        return result
 
 
 
@@ -140,7 +178,8 @@ class DataProvider(object):
 
 
     def clean_data_for_batch_predict(self, datasets: dict) -> pandas.DataFrame:
-        return pandas.DataFrame()
+        # Default implementation; please reimplement
+        return self.clean_data_for_train(datasets)
 
 
 
@@ -307,12 +346,6 @@ class DataProvider(object):
     ###########################################################
 
 
-
-    def __init__(self):
-        pass
-
-
-
     def get_logger(self):
         if not hasattr(self,'logger'):
             self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
@@ -457,7 +490,7 @@ class DataProvider(object):
         for training. Other dataframes can be used for metrics computation or
         other purposes in your DataFrame.
         """
-        pass
+        return dict(train=data)
 
 
     ####################################################################
@@ -522,6 +555,7 @@ class DataProvider(object):
             estimator_params                   = self.estimator_params,
             estimator_hyperparams              = self.estimator_hyperparams,
             estimator_hyperparams_search_space = self.estimator_hyperparams_search_space,
+            proba_class_index                  = self.proba_class_index,
             train_dataset_sources              = self.train_dataset_sources,
             batch_predict_dataset_sources      = self.batch_predict_dataset_sources,
             random_state                       = self.random_state,

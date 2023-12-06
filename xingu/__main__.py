@@ -1,6 +1,8 @@
 import argparse
+import json
 import logging
 
+from . import DataProvider
 from . import DataProviderFactory
 from . import Coach
 from . import Model
@@ -126,6 +128,46 @@ def prepare_args():
         help='Local clone of xingu git repository, to collect various metadata during runtime. Overwrites PROJECT_HOME env.')
 
 
+    
+    # Simple DataProvider arguments (entire DataProvider constructed from command line arguments, no coding)
+    parser.add_argument('--simpledp-id', dest='SIMPLEDP_ID',
+        default=ConfigManager().get('SIMPLEDP_ID',default=None),
+        help='The ID of the Simple DataProvider. Overwrites SIMPLEDP_ID env.')
+
+    parser.add_argument('--simpledp-train-datasource', nargs="+", action="append", dest='TRAIN_DATASOURCE',
+        default=ConfigManager().get('TRAIN_DATASOURCE',default=None),
+        help='Use multiple time. Pass URLs (http, S3, file etc) of CSVs, parquets or JSON files to define a training datasoure. Overwrites TRAIN_DATASOURCE env.')
+
+    parser.add_argument('--simpledp-estimator-features', dest='ESTIMATOR_FEATURES',
+        default=ConfigManager().get('ESTIMATOR_FEATURES',default=None),
+        help='Comma-separated list of column names for the estimator. Overwrites ESTIMATOR_FEATURES env.')
+
+    parser.add_argument('--simpledp-target-feature', dest='TARGET_FEATURE',
+        default=ConfigManager().get('TARGET_FEATURE',default=None),
+        help='Name of target column in the train datasource. Overwrites TARGET_FEATURE env.')
+
+    parser.add_argument('--simpledp-proba-class-index', dest='PROBA_CLASS_INDEX',
+        default=ConfigManager().get('PROBA_CLASS_INDEX',default=None),
+        help='For classifiers, the index of the desired result of predict_proba(). Overwrites PROBA_CLASS_INDEX env.')
+
+    parser.add_argument('--simpledp-estimator-class', dest='ESTIMATOR_CLASS',
+        default=ConfigManager().get('ESTIMATOR_CLASS',default=None),
+        help='Python full name of a xingu.Estimator-derived class, such as “xingu.estimators.xgboost_optuna.XinguXGBoostClassifier”. Overwrites ESTIMATOR_CLASS env.')
+
+    parser.add_argument('--simpledp-estimator-class-params', dest='ESTIMATOR_CLASS_PARAMS',
+        default=ConfigManager().get('ESTIMATOR_CLASS_PARAMS',default=None),
+        help='JSON text used as parameters to your xingu.Estimator-derived class. Overwrites ESTIMATOR_CLASS_PARAMS env.')
+
+    parser.add_argument('--simpledp-estimator-params', dest='ESTIMATOR_PARAMS',
+        default=ConfigManager().get('ESTIMATOR_PARAMS',default=None),
+        help='JSON text used as parameters for the underlying algorithm. Overwrites ESTIMATOR_PARAMS env.')
+
+    parser.add_argument('--simpledp-estimator-hyperparams-search-space', dest='ESTIMATOR_HYPERPARAMS_SEARCH_SPACE',
+        default=ConfigManager().get('ESTIMATOR_HYPERPARAMS_SEARCH_SPACE',default=None),
+        help='JSON text of algorithm hyperparams range instrumented by the hyperparam optimizer. Overwrites ESTIMATOR_HYPERPARAMS_SEARCH_SPACE env.')
+
+    
+    
     parser.add_argument('--debug', dest='DEBUG', action=argparse.BooleanOptionalAction,
         default=ConfigManager().get('DEBUG',default=False, cast=bool),
         help='Be more verbose and output messages to console.')
@@ -133,11 +175,19 @@ def prepare_args():
     parsed = parser.parse_args()
 
     unset_if_none=[
-        'DATAPROVIDER_LIST',            'XINGU_DB_TABLE_PREFIX',
-        'QUERY_CACHE_PATH',             'DVC_QUERY_CACHE_PATH',
-        'DVC_TRAINED_MODELS_PATH',      'PARALLEL_TRAIN_MAX_WORKERS',
-        'HYPEROPT_STRATEGY',            'TRAINED_MODELS_PATH',
-        'PRE_REQ_TRAIN_OR_SESSION_IDS',
+        'DATAPROVIDER_LIST',             'XINGU_DB_TABLE_PREFIX',
+        'QUERY_CACHE_PATH',              'DVC_QUERY_CACHE_PATH',
+        'DVC_TRAINED_MODELS_PATH',       'PARALLEL_TRAIN_MAX_WORKERS',
+        'HYPEROPT_STRATEGY',             'TRAINED_MODELS_PATH',
+        'PRE_REQ_TRAIN_OR_SESSION_IDS',  
+        
+        # Simple DataProvider configs
+        'SIMPLEDP_ID',
+        'TRAIN_DATASOURCE',              'TARGET_FEATURE',
+        'ESTIMATOR_CLASS',               'ESTIMATOR_FEATURES',
+        'PROBA_CLASS_INDEX',             'ESTIMATOR_CLASS_PARAMS',
+        'ESTIMATOR_PARAMS',              'ESTIMATOR_HYPERPARAMS_SEARCH_SPACE'
+        
     ]
 
     args={}
@@ -162,14 +212,77 @@ def main():
     else:
         logger=prepare_logging()
 
+    simpledp = None
+    if (
+                'SIMPLEDP_ID' in args or
+                'TRAIN_DATASOURCE' in args or
+                'TARGET_FEATURE' in args or
+                'ESTIMATOR_CLASS' in args
+            ):
+        # Entering Simple DataProvider mode where a fully funcitonal
+        # DataProvider will be constructed from command line arguments.
+        # These 3 parameters are the minimum required to run it.
+        
+        if (
+                'SIMPLEDP_ID' in args and
+                'TRAIN_DATASOURCE' in args and
+                'TARGET_FEATURE' in args and
+                'ESTIMATOR_CLASS' in args
+            ):
+            # Build the package of arguments to pass to DataProvider constructor
+            simpledp_init_params = dict(
+                # The 4 mandatory parameters...
+                
+                id = args['SIMPLEDP_ID'],
+                
+                train_dataset_sources = {
+                    f'df{ds:04d}': dict(url=args['TRAIN_DATASOURCE'][ds][0])
+                    for ds in range(len(args['TRAIN_DATASOURCE']))
+                },
+                
+                y = args['TARGET_FEATURE'],
+                
+                estimator_class = args['ESTIMATOR_CLASS'],
+            )
+            
+            # Need to process all these arguments:
+            # 'ESTIMATOR_FEATURES',
+            # 'PROBA_CLASS_INDEX',             'ESTIMATOR_CLASS_PARAMS',
+            # 'ESTIMATOR_PARAMS',              'ESTIMATOR_HYPERPARAMS_SEARCH_SPACE'
+
+            if 'ESTIMATOR_FEATURES' in args:
+                simpledp_init_params['x_estimator_features'] = [p.strip() for p in args['ESTIMATOR_FEATURES'].split(',')]
+            
+            if 'PROBA_CLASS_INDEX' in args:
+                simpledp_init_params['proba_class_index'] = args['PROBA_CLASS_INDEX']
+                
+            if 'ESTIMATOR_CLASS_PARAMS' in args:
+                simpledp_init_params['estimator_class_params'] = json.loads(args['ESTIMATOR_CLASS_PARAMS'])
+                
+            if 'ESTIMATOR_PARAMS' in args:
+                simpledp_init_params['estimator_params'] = json.loads(args['ESTIMATOR_PARAMS'])
+                
+            if 'ESTIMATOR_HYPERPARAMS_SEARCH_SPACE' in args:
+                simpledp_init_params['estimator_hyperparams_search_space'] = json.loads(args['ESTIMATOR_HYPERPARAMS_SEARCH_SPACE'])
+                
+            simpledp = DataProvider(**simpledp_init_params)
+        else:
+            raise ValueError("Simple DataProvider training requires at least these parameters: TRAIN_DATASOURCE, TARGET_FEATURE, ESTIMATOR_CLASS")
+        
+        
+        
     # Gather all DataProviders requested
     if 'DATAPROVIDER_LIST' in args:
-        dpf=DataProviderFactory(
+        dpf = DataProviderFactory(
             providers_list=[x.strip() for x in args['DATAPROVIDER_LIST'].split(',')],
-            providers_folder=args['DATAPROVIDER_FOLDER']
+            providers_folder=args['DATAPROVIDER_FOLDER'],
+            providers_extra_objects=simpledp,
         )
     else:
-        dpf=DataProviderFactory(providers_folder=args['DATAPROVIDER_FOLDER'])
+        dpf = DataProviderFactory(
+            providers_folder=args['DATAPROVIDER_FOLDER'],
+            providers_extra_objects=simpledp,
+        )
 
     # Prepare list of databases to be parsed latter by Coach.get_db_connection()
     if isinstance(args['DATABASES'],list):

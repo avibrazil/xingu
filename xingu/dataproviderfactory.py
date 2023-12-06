@@ -14,7 +14,7 @@ from . import ConfigManager
 
 class DataProviderFactory:
 
-    def __init__(self, providers_folder: str=None, providers_list: list=None):
+    def __init__(self, providers_folder: str=None, providers_list: list=None, providers_extra_objects=None):
         # 1. Check if providers_folder is valid
         # 2. Load all DPs whose IDs are in providers_list. Load all if None
         # 3. If no providers_folder passed, search for config_file
@@ -87,6 +87,9 @@ class DataProviderFactory:
                         # Check if we have and ID
                         and hasattr(thing, 'id')
 
+                        # Check if ID is meaningful
+                        and thing.id is not None
+
                         # Check if not DataProvider itself
                         and thing != DataProvider
 
@@ -100,6 +103,16 @@ class DataProviderFactory:
                 ):
                     self.dps.update({thing.id: thing})
 
+        # Process DataProvider objects passed on providers_extra_objects
+        if providers_extra_objects is not None:
+            if issubclass(type(providers_extra_objects),DataProvider):
+                providers_extra_objects=[providers_extra_objects]
+            if isinstance(providers_extra_objects,list):
+                self.dps.update({
+                    dp.id: dp
+                    for dp in providers_extra_objects
+                })
+
         if self.providers_list is None:
             self.providers_list=list(self.dps.keys())
 
@@ -109,7 +122,10 @@ class DataProviderFactory:
         for dp in self.providers_list:
             # Return a concrete class instance of a true real DataProvider implementation
             try:
-                yield self.dps[dp]()
+                if type(self.dps[dp])==type:
+                    yield self.dps[dp]()
+                else:
+                    yield self.dps[dp]
             except KeyError as e:
                 self.logger.exception(f'Can’t find DataProvider with ID «{dp}».')
 
