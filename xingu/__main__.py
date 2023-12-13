@@ -79,6 +79,14 @@ def prepare_args():
         default=ConfigManager().get('TRAINED_MODELS_PATH',default=None),
         help='A local folder or an S3 path to dump trained models’ pickles. Example: «s3://mlops-data/sample-dvc/teste-do-avi/avm-trained-models». Overwrites TRAINED_MODELS_PATH env.')
 
+    parser.add_argument('--plots-path', dest='PLOTS_PATH',
+        default=ConfigManager().get('PLOTS_PATH',default=None),
+        help='A local folder or an S3 path to save plots. Overwrites PLOTS_PATH env.')
+
+    parser.add_argument('--plots-format', dest='PLOTS_FORMAT',
+        default=ConfigManager().get('PLOTS_FORMAT',default='png'),
+        help='Comma separated list of image formats. Example: "svg,png". Defaults to PNG only. Overwrites PLOTS_FORMAT env.')
+
     parser.add_argument('--dvc-trained-models-path', dest='DVC_TRAINED_MODELS_PATH',
         default=ConfigManager().get('DVC_TRAINED_MODELS_PATH',default=None),
         help='A local path to dump trained model pickles to later be added to DVC. Overwrites DVC_TRAINED_MODELS_PATH env.')
@@ -146,9 +154,9 @@ def prepare_args():
         default=ConfigManager().get('TARGET_FEATURE',default=None),
         help='Name of target column in the train datasource. Overwrites TARGET_FEATURE env.')
 
-    parser.add_argument('--simpledp-proba-class-index', dest='PROBA_CLASS_INDEX',
-        default=ConfigManager().get('PROBA_CLASS_INDEX',default=None),
-        help='For classifiers, the index of the desired result of predict_proba(). Overwrites PROBA_CLASS_INDEX env.')
+    parser.add_argument('--simpledp-proba-class-index', dest='PROBA_CLASS_INDEX', type=int,
+        default=ConfigManager().get('PROBA_CLASS_INDEX',default=0,cast=int),
+        help='For classifiers, the index of the desired result of predict_proba(). Defaults to 0. Overwrites PROBA_CLASS_INDEX env.')
 
     parser.add_argument('--simpledp-estimator-class', dest='ESTIMATOR_CLASS',
         default=ConfigManager().get('ESTIMATOR_CLASS',default=None),

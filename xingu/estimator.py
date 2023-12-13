@@ -41,7 +41,7 @@ class Estimator(object):
 
 
 
-    def fit(self, datasets: dict, features: list, target: str):
+    def fit(self, datasets: dict, features: list, target: str, model=None):
         """
         Train one or multiple models. Leave everything ready for a predict()
         """

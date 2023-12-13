@@ -85,7 +85,15 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 random_state=self.random_state,
             )
 
-            predicts=pandas.DataFrame(index=datasets['train'].index).assign(proba=None)
+            # Create placeholder similar to train dataset so we can receive
+            # probas
+            predicts=(
+                pandas.DataFrame(
+                    index=datasets['train'].index
+                )
+                .assign(proba=None)
+            )
+
             for (itrain,ival) in skf.split(
                         datasets['train'],
                         datasets['train'].stratify
@@ -119,6 +127,11 @@ class XinguXGBoostClassifier(xingu.Estimator):
                     datasets['train'].iloc[ival][features]
                 )[:, model.dp.proba_class_index]
 
+                # self.log(ival)
+                # self.log(type(model.dp.proba_class_index))
+                # self.log(classifier.predict_proba(
+                #     datasets['train'].iloc[ival][features]
+                # )[:, model.dp.proba_class_index])
 
             return sklearn.metrics.roc_auc_score(
                 datasets['train'][target],
@@ -167,11 +180,11 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
 
 
-    def fit(self, datasets, features, target):
+    def fit(self, datasets, features, target, model=None):
         import sklearn
         # Add attribute 'max_workers=1' to inhibit parallelism
 
-        max_workers=decouple.config('PARALLEL_ESTIMATORS_MAX_WORKERS', default=0, cast=int)
+        max_workers = decouple.config('PARALLEL_ESTIMATORS_MAX_WORKERS', default=0, cast=int)
         if max_workers == '' or max_workers == 0:
             max_workers=None
             self.logger.info(f'Unlimited parallel estimators to train')
@@ -184,29 +197,37 @@ class XinguXGBoostClassifier(xingu.Estimator):
             random_state=self.random_state,
         )
 
+        # Prepare infrastructure for validation data
+        datasets['validation']=datasets['train']
+        if model is not None and not hasattr(model, 'sets_estimations'):
+            model.sets_estimations=dict()
+            model.sets_estimations['validation']=None
+
         executor=concurrent.futures.ThreadPoolExecutor(thread_name_prefix='fit', max_workers=max_workers)
-        tasks=[]
-        index=0
+        tasks = dict()
+        index = 0
         for (itrain,ival) in skf.split(
                     datasets['train'],
                     datasets['train'].stratify
                 ):
-            
+
             self.log(f'Trigger parallel train of XGBoost estimator #{index+1} of {self.bagging_size}...')
 
-            tasks.append(
-                executor.submit(
-                    # Method name to call asynchronously
-                    self.fit_single,
-                    # Its parameters
-                    datasets['train'],
-                    itrain,
-                    ival,
-                    features,
-                    target,
-                )
+            task = executor.submit(
+                # Method name to call asynchronously
+                self.fit_single,
+                # Its parameters
+                datasets['train'],
+                itrain,
+                ival,
+                features,
+                target,
             )
-            
+
+            # Keep a track of which validation part is associated with each
+            # trained XGBoost
+            tasks[task]=ival
+
             index += 1
 
         self.log(f'Waiting for all member training to finish in parallel')
@@ -214,15 +235,48 @@ class XinguXGBoostClassifier(xingu.Estimator):
         # Process result as soon as it is available
         index=0
         for task in concurrent.futures.as_completed(tasks):
-            e=task.exception()
-            if e is None:
-                # Success
-                self.bagging_members.append(task.result())
-                index+=1
-                self.log(f'Finished train of member #{index} of {self.bagging_size}...')
+            xgb = task.result()
+            self.bagging_members.append(xgb)
+            
+            # Collect Ŷ for validation data
+            Ŷ_val = self.predict_single(
+                data           = datasets['train'].iloc[tasks[task]][features],
+                method         = 'predict_proba',
+                bagging_member = index,
+            )
+
+            # Concatenate the validation part for this member to the whole set
+            if model.sets_estimations['validation'] is None:
+                model.sets_estimations['validation'] = Ŷ_val
             else:
-                # Failure
-                raise e
+                model.sets_estimations['validation'] = pandas.concat(
+                    [
+                        model.sets_estimations['validation'],
+                        Ŷ_val
+                    ]
+                )
+
+            index += 1
+            self.log(f'Finished train of member #{index} of {self.bagging_size}…')
+            self.log(f'Collecting validation data for member #{index}…')
+
+
+        # Reindex all validation parts to match X.
+        model.sets_estimations['validation'] = (
+            model.sets_estimations['validation']
+            .reindex(datasets['train'].index)
+        )
+        
+        # Resulting dataframe looks like:
+        # |    |   estimation_class_0 |   estimation_class_1 |   member |
+        # |---:|---------------------:|---------------------:|---------:|
+        # |  0 |             0.966081 |            0.0339192 |        1 |
+        # |  1 |             0.95291  |            0.0470905 |        1 |
+        # |  2 |             0.960247 |            0.0397534 |        2 |
+        # |  3 |             0.942724 |            0.0572757 |        0 |
+        # |  4 |             0.963377 |            0.036623  |        2 |
+
+        self.log('Validation: \n' + model.sets_estimations['validation'].head().to_markdown())
 
 
 

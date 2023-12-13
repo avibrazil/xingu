@@ -429,7 +429,8 @@ class Model(object):
             self.estimator.fit(
                 datasets  = self.sets,
                 features  = self.dp.get_estimator_features_list(),
-                target    = self.dp.get_target()
+                target    = self.dp.get_target(),
+                model     = self
             )
 
             self.log_train_status('train_fit_end')
@@ -632,15 +633,23 @@ class Model(object):
         if not hasattr(self, 'sets'):
             return
 
-        self.sets_estimations = dict()
+        if not hasattr(self, 'sets_estimations'):
+            # Create sets_estimations only if still doesn´t exist
+            # It might have been created in the train and validation process
+            # by the Estimator.
+            self.sets_estimations = dict()
 
         for part in self.sets.keys():
-            self.log(f'Predicting {part} part of the training dataset for metrics purposes')
+            if part not in self.sets_estimations:
+                # If already not prodicted (e.g. 'validation')
+                self.log(f'Predicting «{part}» part of the training dataset for metrics purposes')
 
-            if self.estimator.is_classifier():
-                self.sets_estimations[part] = self.predict_proba(self.sets[part])
+                if self.estimator.is_classifier():
+                    self.sets_estimations[part] = self.predict_proba(self.sets[part])
+                else:
+                    self.sets_estimations[part] = self.predict(self.sets[part])
             else:
-                self.sets_estimations[part] = self.predict(self.sets[part])
+                self.log(f'Prediction of «{part}» was already made by some previous task in the Xingu pipeline, probably internals of your xingu.Estimator.')
 
         self.compute_and_save_metrics(channel='trainsets')
 

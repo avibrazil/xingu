@@ -1,6 +1,6 @@
 [project]
 name = "xingu"
-version = '1.4'
+version = '1.4.4'
 description = "Automated ML model training and packaging"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -15,7 +15,7 @@ keywords = [
 ]
 
 dependencies = [
-    "pandas>=1.5",
+    "pandas",
     "python-decouple",
     "SQLAlchemy < 2",
     "tabulate",

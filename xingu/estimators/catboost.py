@@ -109,7 +109,7 @@ class XinguCatBoostClassifier(xingu.Estimator):
 
 
 
-    def fit(self, datasets, features, target):
+    def fit(self, datasets, features, target, model=None):
         # Add attribute 'max_workers=1' to inhibit parallelism
 
         max_workers=decouple.config('PARALLEL_ESTIMATORS_MAX_WORKERS', default=0, cast=int)
