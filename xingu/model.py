@@ -417,7 +417,7 @@ class Model(object):
             self.hyperparam_optimize()
 
             self.log(
-                message=f"Hyperopt parameters from {self.algo_params['source_train_id']}:\n" + pandas.Series(self.algo_params['hyperparams']).to_markdown(),
+                message=f"Hyperparameters from {self.algo_params['source_train_id']}:\n" + pandas.Series(self.algo_params['hyperparams']).to_markdown(),
                 level=logging.DEBUG
             )
 
@@ -2643,7 +2643,7 @@ class Model(object):
 
             # Train info
             'train_session_id',     'train_id',    'trained',
-            'hyperopt_strategy',    'hyperparam',  'train_queries_signatures',
+            'hyperopt_strategy',    'algo_params', 'train_queries_signatures',
 
             # Large stuff
             'estimator',
@@ -2680,7 +2680,7 @@ class Model(object):
         attributes={
             # Train info
             'train_session_id',     'train_id',    'trained',
-            'hyperopt_strategy',    'hyperparam',  'train_queries_signatures',
+            'hyperopt_strategy',    'algo_params', 'train_queries_signatures',
 
             # OS environment info
             'user_name',            'host_name',
