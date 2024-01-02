@@ -644,7 +644,7 @@ class Model(object):
                 # If already not prodicted (e.g. 'validation')
                 self.log(f'Predicting «{part}» part of the training dataset for metrics purposes')
 
-                if self.estimator.is_classifier():
+                if self.estimator is not None and self.estimator.is_classifier():
                     self.sets_estimations[part] = self.predict_proba(self.sets[part])
                 else:
                     self.sets_estimations[part] = self.predict(self.sets[part])
@@ -1959,7 +1959,7 @@ class Model(object):
                     github_workflow
                     github_run_id
                     github_run_number
-                    x_features
+                    x_estimator_features
                 """.split()
 
             elif status == 'train_hyperhandle_end':

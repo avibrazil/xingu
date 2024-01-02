@@ -6,7 +6,6 @@ import pandas
 
 from .estimator import Estimator
 
-@dataclasses.dataclass
 class DataProvider(object):
 
     ###########################################################
@@ -15,13 +14,13 @@ class DataProvider(object):
     ###
     ###########################################################
 
-    id:                            str    = dataclasses.field(default=None)
-    x_features:                    list   = dataclasses.field(default_factory=list)
-    x_estimator_features:          list   = dataclasses.field(default_factory=list)
-    y:                             str    = dataclasses.field(default=None)
-    train_dataset_sources:         dict   = dataclasses.field(default_factory=dict)
-    batch_predict_dataset_sources: dict   = dataclasses.field(default_factory=dict)
-    hollow:                        bool   = dataclasses.field(default=False)
+    id:                            str    = None
+    x_features:                    list   = None
+    x_estimator_features:          list
+    y:                             str
+    train_dataset_sources:         dict   = dict()
+    batch_predict_dataset_sources: dict   = dict()
+    hollow:                        bool   = False
 
 
 
@@ -31,9 +30,9 @@ class DataProvider(object):
     ###
     ###########################################################
 
-    random_state:                  int    = dataclasses.field(default=42)
-    test_size:                     float  = dataclasses.field(default=0.1)
-    val_size:                      float  = dataclasses.field(default=0.2)
+    random_state:                  int    = 42
+    test_size:                     float  = 0.1
+    val_size:                      float  = 0.2
 
     ###########################################################################
     ###
@@ -77,10 +76,10 @@ class DataProvider(object):
     ###########################################################################
 
     estimator_class:                      type   = Estimator
-    estimator_class_params:               dict   = dataclasses.field(default_factory=dict)
-    estimator_params:                     dict   = dataclasses.field(default_factory=dict)
-    estimator_hyperparams:                dict   = dataclasses.field(default_factory=dict)
-    estimator_hyperparams_search_space:   dict   = dataclasses.field(default_factory=dict)
+    estimator_class_params:               dict   = dict()
+    estimator_params:                     dict   = dict()
+    estimator_hyperparams:                dict   = dict()
+    estimator_hyperparams_search_space:   dict   = dict()
 
 
     ###########################################################
@@ -91,7 +90,7 @@ class DataProvider(object):
 
     # For classification models, the index of predict_proba result tha matches
     # the training target
-    proba_class_index:                    int    = dataclasses.field(default=0)
+    proba_class_index:                    int    = 0
 
 
     ###########################################################
@@ -100,7 +99,7 @@ class DataProvider(object):
     ###
     ###########################################################
 
-    def __post_init__(self):
+    def __init__(self):
         if type(self.estimator_class) == str:
             # Convert an estimator class string into its real class.
             # For example, the string 'xingu.estimators.xgboost_optuna.XinguXGBoostClassifier'
