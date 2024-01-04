@@ -195,7 +195,7 @@ def prepare_args():
         'QUERY_CACHE_PATH',              'DVC_QUERY_CACHE_PATH',
         'DVC_TRAINED_MODELS_PATH',       'PARALLEL_TRAIN_MAX_WORKERS',
         'HYPEROPT_STRATEGY',             'TRAINED_MODELS_PATH',
-        'PRE_REQ_TRAIN_OR_SESSION_IDS',
+        'PRE_REQ_TRAIN_OR_SESSION_IDS',  'DATAPROVIDER_FOLDER',
 
         # Simple DataProvider configs
         'SIMPLEDP_ID',                   'BASE_CLASS',
@@ -284,15 +284,21 @@ def main():
                 simpledp_init_params['estimator_hyperparams_search_space'] = json.loads(args['ESTIMATOR_HYPERPARAMS_SEARCH_SPACE'])
 
             if 'BASE_CLASS' in args:
+                import sys
                 import importlib
+
+                if 'DATAPROVIDER_FOLDER' in args:
+                    sys.path.insert(1, args['DATAPROVIDER_FOLDER'])
 
                 mod=importlib.import_module('.'.join(args['BASE_CLASS'].split('.')[:-1]))
                 dp_base_class=getattr(mod,args['BASE_CLASS'].split('.')[-1])
             else:
                 dp_base_class=DataProvider
 
-            # Make a class and an instance
-            simpledp = type(f"SimpleDP_{args['SIMPLEDP_ID']}",(dp_base_class,),simpledp_init_params)()            
+            # Create a Simple DataProvider in the global scope (for easier pickling)
+            globals()[f"SimpleDP_{args['SIMPLEDP_ID']}"]=type(f"SimpleDP_{args['SIMPLEDP_ID']}",(dp_base_class,),simpledp_init_params)
+            # Create an object out of this Simple DataProvider
+            simpledp = globals()[f"SimpleDP_{args['SIMPLEDP_ID']}"]()
         else:
             raise ValueError("Simple DataProvider training requires at least these parameters: TRAIN_DATASOURCE, TARGET_FEATURE, ESTIMATOR_CLASS")
 
