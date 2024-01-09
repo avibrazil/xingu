@@ -158,6 +158,7 @@ Train various Models, all possible in parallel.
                     4. 💫`DataProvider.get_estimator_hyperparameters()`
                     5. 💫`Estimator.hyperparam_optimize()` (SKOpt, GridSearch et all)
                     6. 💫`Estimator.hyperparam_exchange()`
+                8. 💫`DataProvider.post_process_after_hyperparam_optimize()`
                 9. 💫`Estimator.fit()`
                 10. 💫`DataProvider.post_process_after_train()`
     2. `Coach.post_train_parallel()` (background, only if `POST_PROCESS=true`):

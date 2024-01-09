@@ -133,18 +133,32 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 #     datasets['train'].iloc[ival][features]
                 # )[:, model.dp.proba_class_index])
 
-            return sklearn.metrics.roc_auc_score(
+            # auc_train is AUC between Y_true and Y_pred
+            auc_train = sklearn.metrics.roc_auc_score(
+                datasets['train'][target],
+                classifier.predict_proba(
+                        datasets['train'][features]
+                    )[:, model.dp.proba_class_index]
+            )
+
+            # auc_val is AUC between Y_true and Y_val_pred
+            auc_val = sklearn.metrics.roc_auc_score(
                 datasets['train'][target],
                 predicts.proba
             )
 
+            return auc_train-auc_val, auc_val
 
-        optimizer=optuna.create_study(
+        self.optimizer=optuna.create_study(
             study_name='Xingu generic XGBoostClassifier optimizer',
-            direction='maximize'
+            directions=["minimize", "maximize"]
         )
 
-        optimizer.optimize(lambda trial: objective(trial, model), n_trials=self.optimization_trials)
+        self.optimizer.optimize(lambda trial: objective(trial, model), n_trials=self.optimization_trials)
+        self.optimizer_pareto_front=optuna.visualization.plot_pareto_front(
+            self.optimizer,
+            target_names=["Train AUC - Validation AUC", "Validation AUC"]
+        )
 
         # for i in range(20):
         #     ntrials = len(optimizer.trials)
@@ -152,7 +166,10 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
         # Convert the OrderedDict returned by these objects into a plain dict
         # return {i[0]:i[1] for i in optimizer.best_params_.items()}
-        return optimizer.best_trial.params
+
+        # For a multi-objective, further human analysis is required. Returning
+        # the first one just to make waves.
+        return self.optimizer.best_trials[0].params
 
 
 
@@ -266,7 +283,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
             model.sets_estimations['validation']
             .reindex(datasets['train'].index)
         )
-        
+
         # Resulting dataframe looks like:
         # |    |   estimation_class_0 |   estimation_class_1 |   member |
         # |---:|---------------------:|---------------------:|---------:|

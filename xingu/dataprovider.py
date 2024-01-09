@@ -234,6 +234,22 @@ class DataProvider(object):
 
 
 
+    def post_process_after_hyperparam_optimize(self, model):
+        """
+        Called after estimator was optimized by hyperparam_optimize() but
+        before the final train.
+
+        model.estimator has the xingu.Estimator object.
+
+        The `model` parameter has the entire Model object and the `dp` attribute
+        inside `model` equals to `self`. In other words, `model.dp` and `self`
+        are the same object in the context of this method. Yet in another set
+        of words, `model.dp == self`.
+        """
+        pass
+
+
+
     def post_process_after_train(self, model):
         """
         Called after estimator was trained but before PKL is saved or metrics computed.

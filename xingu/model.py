@@ -416,6 +416,8 @@ class Model(object):
         if not self.dp.hollow:
             self.hyperparam_optimize()
 
+            self.dp.post_process_after_hyperparam_optimize(self)
+
             self.log(
                 message=f"Hyperparameters from {self.algo_params['source_train_id']}:\n" + pandas.Series(self.algo_params['hyperparams']).to_markdown(),
                 level=logging.DEBUG
@@ -1242,7 +1244,7 @@ class Model(object):
                 the_time=round(self.batch_predict_time.timestamp())
 
             self.log('Saving model metrics to DB')
-            
+
             with self.coach.get_db_connection('xingu').connect() as db:
                 (
                     metrics
