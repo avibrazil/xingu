@@ -653,8 +653,9 @@ class Model(object):
             else:
                 self.log(f'Prediction of «{part}» was already made by some previous task in the Xingu pipeline, probably internals of your xingu.Estimator.')
 
+        self.dp.pre_process_for_trainsets_metrics(self)
         self.compute_and_save_metrics(channel='trainsets')
-
+        self.dp.post_process_after_trainsets_metrics(self)
 
 
     def save_batch_predict_estimations(self):

@@ -435,7 +435,7 @@ class Coach:
                     self.logger.exception(e)
                     raise e
 
-            self.logger.debug('Alls post-process tasks finished.')
+        self.logger.debug('Alls post-process tasks finished.')
 
 
 

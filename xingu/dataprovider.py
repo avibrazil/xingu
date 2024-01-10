@@ -349,7 +349,26 @@ class DataProvider(object):
         return self.post_process_after_generic_predict(X,Y_pred,model)
 
 
+    def pre_process_for_trainsets_metrics(self, model):
+        """
+        Called by Model.trainsets_predict() after train sets where predicted
+        but before metrics computation.
 
+        model.sets and model.sets_estimations are dicts with interesting
+        DataFrames.
+        """
+        pass
+
+
+
+    def post_process_after_trainsets_metrics(self, model):
+        """
+        Called by Model.trainsets_predict() after metrics computation.
+
+        model.sets and model.sets_estimations are dicts with interesting
+        DataFrames.
+        """
+        pass
 
 
     ###########################################################

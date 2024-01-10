@@ -167,8 +167,10 @@ Train various Models, all possible in parallel.
             2. `Model.trainsets_save()` (save the train datasets, background)
             3. `Model.trainsets_predict()`:
                 1. `Model.predict_proba()` or `Model.predict()` (see [below](#predict))
-                2. `Model.compute_and_save_metrics(channel=trainsets)` (see [below](#metrics))
-            4. `Coachl.single_batch_predict()` (see [below](#batch))
+                2. 💫`DataProvider.pre_process_for_trainsets_metrics()`
+                3. `Model.compute_and_save_metrics(channel=trainsets)` (see [below](#metrics))
+                4. 💫`DataProvider.post_process_after_trainsets_metrics()`
+            4. `Coach.single_batch_predict()` (see [below](#batch))
 
 
 
@@ -189,7 +191,7 @@ to get it.
             4. 💫`DataProvider.feature_engineering_for_batch_predict()`
             5. 💫`DataProvider.last_pre_process_for_batch_predict()`
             6. `Model.predict_proba()` or `Model.predict()` (see [below](#predict))
-        2. `Model.compute_and_save_metrics(channel=batch_predict` (see [below](#metrics))
+        2. `Model.compute_and_save_metrics(channel=batch_predict)` (see [below](#metrics))
         3. `Model.save_batch_predict_estimations()`
 
 
