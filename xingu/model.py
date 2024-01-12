@@ -612,6 +612,12 @@ class Model(object):
                             # Standardize index
                             .reset_index(names='index')
 
+                            # Force data types, some DBs (cough Athena cough) will complain otherwise
+                            .assign(
+                                index=lambda table: table['index'].astype(str),
+                                target=lambda table: table.target.astype(float),
+                            )
+
                             # Write debug message to console
                             .pipe(lambda table: ddebug(
                                 table,

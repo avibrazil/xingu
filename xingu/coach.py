@@ -907,16 +907,6 @@ class Coach:
 
             current=self.databases[databases[i]]
 
-            if 'athena' in current['url']:
-                # Set some defaults for AWS Athena in here to avoid global
-                # module requirements
-                import pyathena.pandas.cursor
-                engine_config_sets['athena']=dict(
-                    connect_args=dict(
-                        cursor_class=pyathena.pandas.cursor.PandasCursor
-                    )
-                )
-
             # Start with a default config
             engine_config=engine_config_sets['DEFAULT'].copy()
 
@@ -955,7 +945,7 @@ class Coach:
 
             # DB Engine was just created; check if all tables are there
             if databases[i] == 'xingu':
-                self.init_db(current['conn'])
+                self.init_db(self.databases[databases[i]])
 
             self.logger.debug(f"Data source «{databases[i]}» is {current['conn']}. Created with config: {engine_config}.")
 
@@ -971,7 +961,7 @@ class Coach:
 
         import sqlalchemy
 
-        self.xingu_db_metadata = sqlalchemy.MetaData(bind=con)
+        self.xingu_db_metadata = sqlalchemy.MetaData(bind=con['conn'])
 
         self.xingu_db_table_prefix=self.get_config('XINGU_DB_TABLE_PREFIX','')
 
@@ -1081,13 +1071,15 @@ class Coach:
                     self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
-
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_status', 'status'),
         )
+
+        if 'awsathena' not in con['url']:
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].time),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_status',           self.tables[table_name].status),
+
 
         table_name='sets'
         self.tables[table_name] = sqlalchemy.Table(
@@ -1127,11 +1119,13 @@ class Coach:
                     self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
-
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
+
+        if 'awsathena' not in con['url']:
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
+
 
         table_name='metrics_model'
         self.tables[table_name] = sqlalchemy.Table(
@@ -1182,12 +1176,14 @@ class Coach:
                     self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
-
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
+
+        if 'awsathena' not in con['url']:
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].time),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
+
 
         table_name='metrics_estimation'
         self.tables[table_name] = sqlalchemy.Table(
@@ -1238,12 +1234,14 @@ class Coach:
                     self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
-
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
+
+        if 'awsathena' not in con['url']:
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].time),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
+
 
         table_name='estimations'
         self.tables[table_name] = sqlalchemy.Table(
@@ -1288,12 +1286,14 @@ class Coach:
                     self.xingu_db_table_prefix + 'training.train_id',
                 ]
             ),
-
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time', 'time'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id', 'dataprovider_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', 'train_session_id'),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id', 'train_id'),
         )
+
+        if 'awsathena' not in con['url']:
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].time),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
+
 
         self.logger.info('Going to create tables on Xingu DB')
 
