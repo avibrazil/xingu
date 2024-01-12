@@ -12,15 +12,25 @@ import xingu
 
 class XinguXGBoostClassifier(xingu.Estimator):
     """
-    Multi-XGBoost implementation of an estimator optimized by Optuna.
+    Multi-XGBoost implementation of a xingu.Estimator optimized by Optuna.
     """
 
 
-    def __init__(self, params: dict=None, hyperparams: dict=None, random_state=42, bagging_size=1, optimization_trials=10, **kwargs):
+    def __init__(
+                self,
+                params: dict=None,
+                hyperparams: dict=None,
+                random_state=42,
+                bagging_size=1,
+                optimization_trials=10,
+                report_interval=30,
+                **kwargs
+    ):
         super().__init__(params=params,hyperparams=hyperparams)
 
         self.bagging_size=bagging_size
         self.optimization_trials=optimization_trials
+        self.report_interval=report_interval
         self.bagging_members=[]
 
         self.random_state=random_state
@@ -154,21 +164,44 @@ class XinguXGBoostClassifier(xingu.Estimator):
             directions=["minimize", "maximize"]
         )
 
-        self.optimizer.optimize(lambda trial: objective(trial, model), n_trials=self.optimization_trials)
-        self.optimizer_pareto_front=optuna.visualization.plot_pareto_front(
-            self.optimizer,
-            target_names=["Train AUC - Validation AUC", "Validation AUC"]
+        executor=concurrent.futures.ThreadPoolExecutor()
+        task=executor.submit(
+            # Method name to call in the background
+            self.optimizer.optimize,
+
+            # Its parameters
+            func       = lambda trial: objective(trial, model),
+            n_trials   = self.optimization_trials
         )
 
-        # for i in range(20):
-        #     ntrials = len(optimizer.trials)
-        #     optimizer.optimize(objective, n_trials=min(500-ntrials,50))
+        # Dump intermediary reports while waiting for the optimization to end
+        while True:
+            try:
+                task.result(timeout=self.report_interval)
+                self.logger.info('Optimization done')
 
-        # Convert the OrderedDict returned by these objects into a plain dict
-        # return {i[0]:i[1] for i in optimizer.best_params_.items()}
+                # Break away from the infinite while loop; optimization is done
+                break;
 
-        # For a multi-objective, further human analysis is required. Returning
-        # the first one just to make waves.
+            except concurrent.futures._base.TimeoutError:
+                # Time to dump intermediary reports
+                self.logger.info(f'Dump intermediary optimization report and object')
+                self.optimizer_pareto_front = (
+                    optuna.visualization.plot_pareto_front(
+                        self.optimizer,
+                        target_names=[
+                            "Train AUC - Validation AUC",
+                            "Validation AUC"
+                        ]
+                    )
+                )
+
+                # Let DataProviders do their things on each report_interval iteration
+                if hasattr(model.dp,'post_process_after_hyperparam_optimize'):
+                    model.dp.post_process_after_hyperparam_optimize(model)
+
+        executor.shutdown()
+
         return self.optimizer.best_trials[0].params
 
 
@@ -254,7 +287,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
         for task in concurrent.futures.as_completed(tasks):
             xgb = task.result()
             self.bagging_members.append(xgb)
-            
+
             # Collect Ŷ for validation data
             Ŷ_val = self.predict_single(
                 data           = datasets['train'].iloc[tasks[task]][features],
