@@ -157,7 +157,7 @@ class Coach:
     def team_train_parallel(self):
         import randomname
 
-        self.train_session_id=self.get_config('TRAIN_SESSION_ID')
+        self.train_session_id=self.get_config('TRAIN_SESSION_ID', default=None)
         if self.train_session_id is None:
             self.train_session_id=randomname.get_name()
 
