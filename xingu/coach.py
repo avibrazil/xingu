@@ -157,7 +157,9 @@ class Coach:
     def team_train_parallel(self):
         import randomname
 
-        self.train_session_id=randomname.get_name()
+        self.train_session_id=self.get_config('TRAIN_SESSION_ID')
+        if self.train_session_id is None:
+            self.train_session_id=randomname.get_name()
 
         self.trained = {}
         self.trained_in_session = []
@@ -405,8 +407,9 @@ class Coach:
                     )
                 )
 
-                # Save trainsets to DB
-                tasks.append(executor.submit(model.trainsets_save))
+                if self.get_config('SAVE_SETS'):
+                    # Save trainsets to DB
+                    tasks.append(executor.submit(model.trainsets_save))
 
                 # Predict and compute metrics over train data
                 tasks.append(executor.submit(model.trainsets_predict))
