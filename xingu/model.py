@@ -121,7 +121,11 @@ class Model(object):
                 if issubclass(dp.__class__, DataProvider):
                     self.dp        = dp
                 else:
-                    raise Exception("This type of Model loading requires a DataProvider object, not just a string. Use DataProviderFactory.get('model_name') to get it.")
+                    raise Exception(
+                        "This type of Model loading requires a DataProvider "
+                        "object, not just a string. Use "
+                        "DataProviderFactory.get('model_name') to get it."
+                    )
             else:
                 self.dp            = bob.dp
 
@@ -157,8 +161,8 @@ class Model(object):
             self.train_queries_signatures = dict()
 
             # Store more contextual and informative metadata from the Coach and environment
-            self.user_name         = os.environ.get('USER', os.environ.get('USERNAME'))
-            self.host_name         = socket.gethostname()
+            self.user_name         = self.get_config('USERNAME',os.environ.get('USER', os.environ.get('USERNAME')))
+            self.host_name         = self.get_config('HOSTNAME',socket.gethostname())
             self.git_branch        = self.coach.git_repo.head.name if self.coach.git_repo else None
             self.git_commit        = self.coach.git_repo.head.target.hex if self.coach.git_repo else None
             self.github_actor      = self.get_config('GITHUB_ACTOR', None)

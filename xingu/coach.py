@@ -503,8 +503,8 @@ class Coach:
             self.inventory['history'].append(
                 dict(
                     time              = datetime.datetime.now(datetime.timezone.utc),
-                    user_name         = os.environ.get('USER', os.environ.get('USERNAME')),
-                    host_name         = socket.gethostname(),
+                    user_name         = self.get_config('USERNAME',os.environ.get('USER', os.environ.get('USERNAME'))),
+                    host_name         = self.get_config('HOSTNAME',socket.gethostname()),
                     git_branch        = self.git_repo.head.name if self.git_repo else None,
                     git_commit        = self.git_repo.head.target.hex if self.git_repo else None,
                     github_actor      = self.get_config('GITHUB_ACTOR', None),
@@ -687,7 +687,7 @@ class Coach:
 
     def report(self, train_ids: list=None, dataprovider_id: str=None, on: str='model',
                     start: str=None, reference_train_id: str=None) -> pandas.DataFrame:
-        
+
         import sqlalchemy
 
         # Method idealized but still unimplemented.

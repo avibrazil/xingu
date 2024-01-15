@@ -200,6 +200,28 @@ def prepare_args():
     )
 
     parser.add_argument(
+        '--hostname',
+        dest='HOSTNAME',
+        default=ConfigManager().get('HOSTNAME',default=None),
+        help=(
+            'Sometimes the detected hostname is useless for reporting purposes. "
+            'This is your chance to define something more useful. '
+            'Overwrites HOSTNAME env.'
+        )
+    )
+
+    parser.add_argument(
+        '--username',
+        dest='USERNAME',
+        default=ConfigManager().get('USERNAME',default=None),
+        help=(
+            'Sometimes the detected user name is useless for reporting purposes. "
+            'This is your chance to define something more useful. '
+            'Overwrites USERNAME env.'
+        )
+    )
+
+    parser.add_argument(
         '--parallel-train-max-workers',
         dest='PARALLEL_TRAIN_MAX_WORKERS',
         default=ConfigManager().get('PARALLEL_TRAIN_MAX_WORKERS', default=0),
@@ -439,6 +461,7 @@ def prepare_args():
         'DVC_TRAINED_MODELS_PATH',       'PARALLEL_TRAIN_MAX_WORKERS',
         'HYPEROPT_STRATEGY',             'TRAINED_MODELS_PATH',
         'PRE_REQ_TRAIN_OR_SESSION_IDS',  'DATAPROVIDER_FOLDER',
+        'HOSTNAME',                      'USERNAME',
 
         # Simple DataProvider configs
         'SIMPLEDP_ID',                   'BASE_CLASS',
