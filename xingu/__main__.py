@@ -204,7 +204,7 @@ def prepare_args():
         dest='HOSTNAME',
         default=ConfigManager().get('HOSTNAME',default=None),
         help=(
-            'Sometimes the detected hostname is useless for reporting purposes. "
+            'Sometimes the detected hostname is useless for reporting purposes. '
             'This is your chance to define something more useful. '
             'Overwrites HOSTNAME env.'
         )
@@ -215,7 +215,7 @@ def prepare_args():
         dest='USERNAME',
         default=ConfigManager().get('USERNAME',default=None),
         help=(
-            'Sometimes the detected user name is useless for reporting purposes. "
+            'Sometimes the detected user name is useless for reporting purposes. '
             'This is your chance to define something more useful. '
             'Overwrites USERNAME env.'
         )

@@ -1,6 +1,6 @@
 [project]
 name = "xingu"
-version = '1.6.1'
+version = '1.6.2'
 description = "Automated ML model training and packaging"
 readme = "README.md"
 license = { file = "LICENSE" }

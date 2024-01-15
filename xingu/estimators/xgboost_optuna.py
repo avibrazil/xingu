@@ -23,7 +23,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 random_state=42,
                 bagging_size=1,
                 optimization_trials=10,
-                report_interval=30,
+                report_interval=None,
                 **kwargs
     ):
         super().__init__(params=params,hyperparams=hyperparams)
@@ -104,10 +104,14 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 .assign(proba=None)
             )
 
-            for (itrain,ival) in skf.split(
-                        datasets['train'],
-                        datasets['train'].stratify
-                    ):
+            for fold in self.folds:
+                # Make name shortcuts
+                (itrain,ival) = fold
+
+            # for (itrain,ival) in self.skf.split(
+            #             datasets['train'],
+            #             datasets['train'].stratify
+            #         ):
 
                 # self.log('All params: ' + str(dict(
                 #     random_state=self.random_state,
@@ -159,6 +163,21 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
             return auc_train-auc_val, auc_val
 
+
+        skf = sklearn.model_selection.StratifiedKFold(
+            n_splits=self.bagging_size,
+            shuffle=True,
+            random_state=self.random_state,
+        )
+
+        self.folds = [
+            itrain_ival
+            for itrain_ival in skf.split(
+                model.sets['train'],
+                model.sets['train'].stratify
+            )
+        ]
+
         self.optimizer=optuna.create_study(
             study_name='Xingu generic XGBoostClassifier optimizer',
             directions=["minimize", "maximize"]
@@ -177,6 +196,8 @@ class XinguXGBoostClassifier(xingu.Estimator):
         # Dump intermediary reports while waiting for the optimization to end
         while True:
             try:
+                # Block until report_interval seconds. If report_interval is
+                # None, block until end of optimization
                 task.result(timeout=self.report_interval)
                 self.logger.info('Optimization done')
 
