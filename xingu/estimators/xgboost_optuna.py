@@ -1,4 +1,6 @@
 import os
+import datetime
+import pathlib
 import logging
 import concurrent.futures
 import decouple
@@ -26,19 +28,22 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 report_interval=None,
                 **kwargs
     ):
-        super().__init__(params=params,hyperparams=hyperparams)
+        self.random_state = random_state
+        if params is None:
+            params = dict()
 
-        self.bagging_size=bagging_size
-        self.optimization_trials=optimization_trials
-        self.report_interval=report_interval
-        self.bagging_members=[]
+        params['random_state'] = self.random_state
+        super().__init__(params=params, hyperparams=hyperparams)
 
-        self.random_state=random_state
+        self.bagging_size = bagging_size
+        self.optimization_trials = optimization_trials
+        self.report_interval = report_interval
+        self.bagging_members = []
 
 
 
     def __repr__(self):
-        template='{klass}(size={size}, random_state={random_state}, members={members})'
+        template = '{klass}(size={size}, random_state={random_state}, members={members})'
 
         text = template.format(
             klass          = type(self).__name__,
@@ -89,12 +94,6 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 for p in search_space
             }
 
-            skf = sklearn.model_selection.StratifiedKFold(
-                n_splits=self.bagging_size,
-                shuffle=True,
-                random_state=self.random_state,
-            )
-
             # Create placeholder similar to train dataset so we can receive
             # probas
             predicts=(
@@ -120,7 +119,6 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 # )))
 
                 classifier = xgboost.XGBClassifier(
-                    random_state=self.random_state,
                     **self.params,
                     **suggested_hyperparams
                 )
@@ -178,10 +176,24 @@ class XinguXGBoostClassifier(xingu.Estimator):
             )
         ]
 
-        self.optimizer=optuna.create_study(
-            study_name='Xingu generic XGBoostClassifier optimizer',
-            directions=["minimize", "maximize"]
+        self.optimizer = optuna.create_study(
+            study_name=f"{model.dp.id} • {model.get_full_train_id()}",
+            directions=["minimize", "maximize"],
+            storage=(
+                "sqlite:///" +
+                str(
+                    pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
+                    f"{model.dp.id} • {model.get_full_train_id()} • optimizer.db"
+                )
+            ),
+            load_if_exists=True,
         )
+
+        # When Optuna 3.2.0 is widely available...
+        # self.optimizer.set_metric_names([
+        #     "Train AUC - Validation AUC",
+        #     "Validation AUC"
+        # ])
 
         executor=concurrent.futures.ThreadPoolExecutor()
         task=executor.submit(
@@ -217,6 +229,51 @@ class XinguXGBoostClassifier(xingu.Estimator):
                     )
                 )
 
+                # Compute statistics about trials and predict ETA
+                trials=(
+                    pandas.DataFrame(
+                        [
+                            dict(
+                                number   = trial.number,
+                                start    = trial.datetime_start,
+                                complete = trial.datetime_complete,
+                                state    = trial.state
+                            )
+                            for trial in self.optimizer.get_trials()
+                            # if trial.state==optuna.trial.TrialState.COMPLETE
+                        ]
+                    )
+                    .assign(
+                        start    = lambda table: pandas.to_datetime(table.start),
+                        complete = lambda table: pandas.to_datetime(table.complete),
+                        duration = lambda table: table.complete-table.start
+                    )
+                )
+
+                self.logger.debug(trials.to_markdown())
+
+                if len(trials[trials.state==optuna.trial.TrialState.COMPLETE])>0:
+                    now=datetime.datetime.now(datetime.timezone.utc)
+                    average_duration=trials[trials.state==optuna.trial.TrialState.COMPLETE].duration.median()
+                    remaining_duration=(self.optimization_trials-len(trials)) * average_duration
+                    eta=now + remaining_duration
+                    average_duration="{}h{}m{}s".format(
+                        int(average_duration.seconds/3600),
+                        int((average_duration.seconds%3600)/60),
+                        int((average_duration.seconds%3600)%60)
+                    )
+                    remaining_duration="{}h{}m{}s".format(
+                        int(remaining_duration.seconds/3600),
+                        int((remaining_duration.seconds%3600)/60),
+                        int((remaining_duration.seconds%3600)%60)
+                    )
+
+                    self.logger.info(
+                        f"{len(trials[trials.state==optuna.trial.TrialState.COMPLETE])} complete trials " +
+                        f"with {average_duration} median execution time. " +
+                        f"End of optimization estimated in {remaining_duration}, around {eta}"
+                    )
+
                 # Let DataProviders do their things on each report_interval iteration
                 if hasattr(model.dp,'post_process_after_hyperparam_optimize'):
                     model.dp.post_process_after_hyperparam_optimize(model)
@@ -231,7 +288,6 @@ class XinguXGBoostClassifier(xingu.Estimator):
         import sklearn
 
         clf = xgboost.XGBClassifier(
-            random_state=self.random_state,
             **self.params,
             **self.hyperparams
         )
