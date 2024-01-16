@@ -250,7 +250,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
                     )
                 )
 
-                self.logger.debug(trials.to_markdown())
+                # self.logger.debug(trials.to_markdown())
 
                 if len(trials[trials.state==optuna.trial.TrialState.COMPLETE])>0:
                     now=datetime.datetime.now(datetime.timezone.utc)
