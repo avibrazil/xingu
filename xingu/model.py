@@ -993,7 +993,7 @@ class Model(object):
                 metrics=pandas.concat([metrics,metricsdf])
 
         if metrics is not None and metrics.shape[0]>0:
-            self.log('Model metrics: \n' + metrics.to_markdown(), level=logging.DEBUG)
+            self.log('Model metrics: \n' + metrics.reset_index(drop=True).to_markdown(), level=logging.DEBUG)
 
         return metrics
 

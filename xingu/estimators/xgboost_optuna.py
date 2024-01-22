@@ -620,12 +620,26 @@ class XinguXGBoostClassifier(xingu.Estimator):
             # Number of trained models. Should be same as len(bagging_members)
             bagging_size     = self.bagging_size,
 
-            # Array of trained sklearn.tree.DecisionTreeRegressor()s
-            bagging_members  = self.bagging_members,
+            # Array of trained XGBoosts in a format that can be serialized
+            bagging_members_safe  = [x.get_booster().save_raw() for x in self.bagging_members],
+            # bagging_members  = self.bagging_members,
 
             # Random number used by the class, as 42
             random_state     = self.random_state
         )
+
+
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        self.bagging_members=list()
+        for serialized in self.bagging_members_safe:
+            m=xgboost.XGBClassifier()
+            m.load_model(serialized)
+            self.bagging_members.append(m)
+
+        del self.bagging_members_safe
 
 
 
