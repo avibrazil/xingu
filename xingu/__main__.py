@@ -3,6 +3,7 @@ import json
 import logging
 
 from . import DataProvider
+from . import DPSimple
 from . import DataProviderFactory
 from . import Coach
 from . import Model
@@ -481,6 +482,7 @@ def prepare_args():
     return args
 
 
+
 def main():
     # Read environment and command line parameters
     args=prepare_args()
@@ -494,80 +496,8 @@ def main():
         logger=prepare_logging()
 
     simpledp = None
-    if (
-                'SIMPLEDP_ID' in args or
-                'TRAIN_DATASOURCE' in args or
-                'TARGET_FEATURE' in args or
-                'ESTIMATOR_CLASS' in args
-            ):
-        # Entering Simple DataProvider mode where a fully funcitonal
-        # DataProvider will be constructed from command line arguments.
-        # These 3 parameters are the minimum required to run it.
-
-        if (
-                'SIMPLEDP_ID' in args and
-                'TRAIN_DATASOURCE' in args and
-                'TARGET_FEATURE' in args and
-                'ESTIMATOR_CLASS' in args
-            ):
-            # Build the package of arguments to pass to DataProvider constructor
-            simpledp_init_params = dict(
-                # The 4 mandatory parameters...
-
-                id = args['SIMPLEDP_ID'],
-
-                train_dataset_sources = {
-                    f'df{ds:04d}': dict(url=args['TRAIN_DATASOURCE'][ds][0])
-                    for ds in range(len(args['TRAIN_DATASOURCE']))
-                },
-
-                y = args['TARGET_FEATURE'],
-
-                estimator_class = args['ESTIMATOR_CLASS'],
-            )
-
-            # Need to process all these arguments:
-            # 'ESTIMATOR_FEATURES',
-            # 'PROBA_CLASS_INDEX',             'ESTIMATOR_CLASS_PARAMS',
-            # 'ESTIMATOR_PARAMS',              'ESTIMATOR_HYPERPARAMS_SEARCH_SPACE'
-
-            if 'ESTIMATOR_FEATURES' in args:
-                simpledp_init_params['x_estimator_features'] = [p.strip() for p in args['ESTIMATOR_FEATURES'].split(',')]
-
-            if 'PROBA_CLASS_INDEX' in args:
-                simpledp_init_params['proba_class_index'] = args['PROBA_CLASS_INDEX']
-
-            if 'ESTIMATOR_CLASS_PARAMS' in args:
-                simpledp_init_params['estimator_class_params'] = json.loads(args['ESTIMATOR_CLASS_PARAMS'])
-
-            if 'ESTIMATOR_PARAMS' in args:
-                simpledp_init_params['estimator_params'] = json.loads(args['ESTIMATOR_PARAMS'])
-
-            if 'ESTIMATOR_HYPERPARAMS' in args:
-                simpledp_init_params['estimator_hyperparams'] = json.loads(args['ESTIMATOR_HYPERPARAMS'])
-
-            if 'ESTIMATOR_HYPERPARAMS_SEARCH_SPACE' in args:
-                simpledp_init_params['estimator_hyperparams_search_space'] = json.loads(args['ESTIMATOR_HYPERPARAMS_SEARCH_SPACE'])
-
-            if 'BASE_CLASS' in args:
-                import sys
-                import importlib
-
-                if 'DATAPROVIDER_FOLDER' in args:
-                    sys.path.insert(1, args['DATAPROVIDER_FOLDER'])
-
-                mod=importlib.import_module('.'.join(args['BASE_CLASS'].split('.')[:-1]))
-                dp_base_class=getattr(mod,args['BASE_CLASS'].split('.')[-1])
-            else:
-                dp_base_class=DataProvider
-
-            # Create a Simple DataProvider in the global scope (for easier pickling)
-            globals()[f"SimpleDP_{args['SIMPLEDP_ID']}"]=type(f"SimpleDP_{args['SIMPLEDP_ID']}",(dp_base_class,),simpledp_init_params)
-            # Create an object out of this Simple DataProvider
-            simpledp = globals()[f"SimpleDP_{args['SIMPLEDP_ID']}"]()
-        else:
-            raise ValueError("Simple DataProvider training requires at least these parameters: TRAIN_DATASOURCE, TARGET_FEATURE, ESTIMATOR_CLASS")
-
+    if 'SIMPLEDP_ID' in args:
+        simpledp = DPSimple(**args)
 
 
     # Gather all DataProviders requested

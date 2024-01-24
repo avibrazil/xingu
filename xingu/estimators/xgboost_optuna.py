@@ -126,6 +126,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 # self.log(datasets['train'].iloc[itrain].head(10).to_markdown())
 
                 classifier.fit(
+                    verbose=False,
                     X=datasets['train'].iloc[itrain][features],
                     y=datasets['train'].iloc[itrain][target],
                     eval_set=[
@@ -295,6 +296,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
         # Actual training session begins
 
         clf.fit(
+            verbose=False,
             X=data.iloc[itrain][features],
             y=data.iloc[itrain][target],
             eval_set=[

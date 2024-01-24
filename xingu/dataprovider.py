@@ -1,4 +1,4 @@
-import dataclasses
+import json
 import inspect
 import logging
 import datetime
@@ -93,12 +93,6 @@ class DataProvider(object):
     proba_class_index:                    int    = 0
 
 
-    ###########################################################
-    ###
-    ###   Methods to post-process what dataclass left for us
-    ###
-    ###########################################################
-
     def __init__(self):
         if type(self.estimator_class) == str:
             # Convert an estimator class string into its real class.
@@ -109,6 +103,7 @@ class DataProvider(object):
             mod=importlib.import_module('.'.join(self.estimator_class.split('.')[:-1]))
             self.estimator_class=getattr(mod,self.estimator_class.split('.')[-1])
 
+        self.log(self.estimator_class)
         if issubclass(self.estimator_class, Estimator)==False:
             raise RuntimeError(f"Invalid class: {self.estimator_class}. Must be subclass of xingu.Estimator.")
 
@@ -596,4 +591,100 @@ class DataProvider(object):
             test_size                          = self.test_size,
             val_size                           = self.val_size,
             hollow                             = self.hollow,
+            id                                 = self.id,
         )
+
+
+
+class DPSimple(DataProvider):
+    """
+    DataProvider to be used with Xingu´s simpledp CLI arguments.
+    """
+    def __init__(self,**kwargs):
+        if (
+                'SIMPLEDP_ID'      in kwargs and
+                'TRAIN_DATASOURCE' in kwargs and
+                'TARGET_FEATURE'   in kwargs and
+                'ESTIMATOR_CLASS'  in kwargs
+            ):
+            # The 4 mandatory parameters...
+            self.id=kwargs['SIMPLEDP_ID']
+            self.train_dataset_sources = {
+                f'df{ds:04d}': dict(url=kwargs['TRAIN_DATASOURCE'][ds][0])
+                for ds in range(len(kwargs['TRAIN_DATASOURCE']))
+            }
+            self.y=kwargs['TARGET_FEATURE']
+            self.estimator_class = kwargs['ESTIMATOR_CLASS']
+
+            # Other parameters
+            if 'ESTIMATOR_FEATURES' in kwargs:
+                self.x_estimator_features = [
+                    p.strip()
+                    for p in kwargs['ESTIMATOR_FEATURES'].split(',')
+                ]
+
+            if 'PROBA_CLASS_INDEX' in kwargs:
+                self.proba_class_index = kwargs['PROBA_CLASS_INDEX']
+
+            if 'ESTIMATOR_CLASS_PARAMS' in kwargs:
+                self.estimator_class_params = json.loads(kwargs['ESTIMATOR_CLASS_PARAMS'])
+
+            if 'ESTIMATOR_PARAMS' in kwargs:
+                self.estimator_params = json.loads(kwargs['ESTIMATOR_PARAMS'])
+
+            if 'ESTIMATOR_HYPERPARAMS' in kwargs:
+                self.estimator_hyperparams = json.loads(kwargs['ESTIMATOR_HYPERPARAMS'])
+
+            if 'ESTIMATOR_HYPERPARAMS_SEARCH_SPACE' in kwargs:
+                self.estimator_hyperparams_search_space = json.loads(kwargs['ESTIMATOR_HYPERPARAMS_SEARCH_SPACE'])
+
+            if 'BASE_CLASS' in kwargs:
+                self.add_base_class(kwargs['BASE_CLASS'])
+
+        else:
+            raise ValueError("Simple DataProvider training requires at least these parameters: TRAIN_DATASOURCE, TARGET_FEATURE, ESTIMATOR_CLASS, SIMPLEDP_ID")
+
+        super().__init__()
+
+
+
+    def add_base_class(self, cls, dp_folder: str=None):
+        if dp_folder:
+            import sys
+            sys.path.insert(1, dp_folder)
+
+        if isinstance(cls, str):
+            # If this is a class full name (as 'generic_credit_risk.DPGenericCreditRisk'),
+            # convert it into a real class object.
+            # If cls is not a string, it is expected to be a class object
+            # already.
+
+            import importlib
+
+            # Store the base class as a string for future pickling and
+            # unpickling
+            self._simpledp_base = cls
+
+            mod=importlib.import_module('.'.join(cls.split('.')[:-1]))
+            cls=getattr(mod,cls.split('.')[-1])
+
+        # It is expected that cls is a class derived from xingu.DataProvider,
+        # as DPSimple class is. Thus it is safe to simply overwrite base
+        # classes.
+        self.__class__.__bases__ = (cls, )
+
+
+
+    def __getstate__(self):
+        return dict(
+            **super().__getstate__(),
+
+            # Save these additional internals to the pickle
+            _simpledp_base = self._simpledp_base
+        )
+
+
+
+    def __setstate__(self, unpickled):
+        self.__dict__.update(unpickled)
+        self.add_base_class(self._simpledp_base)
