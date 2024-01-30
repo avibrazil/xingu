@@ -25,9 +25,33 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 random_state=42,
                 bagging_size=1,
                 optimization_trials=10,
+                optimization_timeout=None,
                 report_interval=None,
                 **kwargs
     ):
+        """
+        - bagging_size defines the number of estimators to be trained along
+          with number of folds to StratifiedKFold(). Dataset must have a
+          column named "stratify" which will be used by StratifiedKFold().
+
+        - params is a dict of static parameters to XGBClassifier().
+
+        - hyperparams is a dict of parameters to XGBClassifier(). It will
+          be ignored if this Estimator will be optimized. In this case, the
+          optimization process will query DataProvider.estimator_hyperparam_search_space
+          to use as a search space.
+
+        - random_state will be use everywhere possible including XGBClassifier().
+
+        - optimization_trials and optimization_timeout set the length of
+          Optuna's optimization. Optimization will stop when number of trials
+          are executed or timeout (seconds) is reached, whatever happens first.
+
+        - report_interval defines interval in seconds to report optimization
+          status, some statistics, estimated time to finish, and takes the
+          chance to dump Optuna's partial data.
+
+        """
         self.random_state = random_state
         if params is None:
             params = dict()
@@ -37,6 +61,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
         self.bagging_size = bagging_size
         self.optimization_trials = optimization_trials
+        self.optimization_timeout = optimization_timeout
         self.report_interval = report_interval
         self.bagging_members = []
 
@@ -79,6 +104,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
             This will be converted and used to optimize an estimator.
             """
+
             datasets     = model.sets
             features     = model.dp.get_estimator_features_list()
             target       = model.dp.get_target()
@@ -196,6 +222,19 @@ class XinguXGBoostClassifier(xingu.Estimator):
         #     "Validation AUC"
         # ])
 
+        end_by_timeout=None
+        if self.optimization_timeout:
+            end_by_timeout = datetime.datetime.now(
+                tz=(
+                    # Local timezone
+                    datetime.datetime.now(datetime.timezone.utc)
+                    .astimezone()
+                    .tzinfo
+                )
+            )
+
+            end_by_timeout += datetime.timedelta(seconds=self.optimization_timeout)
+
         executor=concurrent.futures.ThreadPoolExecutor()
         task=executor.submit(
             # Method name to call in the background
@@ -203,7 +242,8 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
             # Its parameters
             func       = lambda trial: objective(trial, model),
-            n_trials   = self.optimization_trials
+            n_trials   = self.optimization_trials,
+            timeout    = self.optimization_timeout,
         )
 
         # Dump intermediary reports while waiting for the optimization to end
@@ -231,6 +271,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 )
 
                 # Compute statistics about trials and predict ETA
+
                 trials=(
                     pandas.DataFrame(
                         [
@@ -251,10 +292,18 @@ class XinguXGBoostClassifier(xingu.Estimator):
                     )
                 )
 
+                # self.logger.info(f'Trials sample:')
                 # self.logger.debug(trials.to_markdown())
 
                 if len(trials[trials.state==optuna.trial.TrialState.COMPLETE])>0:
-                    now=datetime.datetime.now(datetime.timezone.utc)
+                    now=datetime.datetime.now(
+                        tz=(
+                            # Local timezone
+                            datetime.datetime.now(datetime.timezone.utc)
+                            .astimezone()
+                            .tzinfo
+                        )
+                    )
                     average_duration=trials[trials.state==optuna.trial.TrialState.COMPLETE].duration.median()
                     remaining_duration=(self.optimization_trials-len(trials)) * average_duration
                     eta=now + remaining_duration
@@ -269,11 +318,16 @@ class XinguXGBoostClassifier(xingu.Estimator):
                         int((remaining_duration.seconds%3600)%60)
                     )
 
-                    self.logger.info(
+                    message=(
                         f"{len(trials[trials.state==optuna.trial.TrialState.COMPLETE])} complete trials " +
                         f"with {average_duration} median execution time. " +
-                        f"End of optimization estimated in {remaining_duration}, around {eta}"
+                        f"End of optimization estimated in {remaining_duration}, around {eta}."
                     )
+
+                    if end_by_timeout:
+                        message+=f" Or ends by timeout at {end_by_timeout}."
+
+                    self.logger.info(message)
 
                 # Let DataProviders do their things on each report_interval iteration
                 if hasattr(model.dp,'post_process_after_hyperparam_optimize'):
@@ -627,7 +681,9 @@ class XinguXGBoostClassifier(xingu.Estimator):
             # bagging_members  = self.bagging_members,
 
             # Random number used by the class, as 42
-            random_state     = self.random_state
+            random_state     = self.random_state,
+
+            xgboost_missing_classes_ = self.bagging_members[0].classes_,
         )
 
 
@@ -639,6 +695,10 @@ class XinguXGBoostClassifier(xingu.Estimator):
         for serialized in self.bagging_members_safe:
             m=xgboost.XGBClassifier()
             m.load_model(serialized)
+            if not hasattr(m,'classes_'):
+                # Restore an XGBoostClassifier missing attribute that is
+                # not saved/unsaved
+                m.classes_ = self.xgboost_missing_classes_
             self.bagging_members.append(m)
 
         del self.bagging_members_safe
