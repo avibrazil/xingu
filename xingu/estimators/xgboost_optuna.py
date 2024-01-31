@@ -1,4 +1,5 @@
 import os
+import tempfile
 import datetime
 import pathlib
 import logging
@@ -670,17 +671,23 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
 
     def __getstate__(self):
+        import json
+
+        bagging_members_safe = list()
+
+        # Array of trained XGBoosts in a format that can be serialized
+        for x in self.bagging_members:
+            with tempfile.NamedTemporaryFile(suffix='.json', mode='w+t') as tmp:
+                x.save_model(tmp.name)
+                bagging_members_safe.append(json.load(tmp))
+
         return dict(
             **xingu.Estimator.__getstate__(self),
 
             # Number of trained models. Should be same as len(bagging_members)
             bagging_size     = self.bagging_size,
 
-            # Array of trained XGBoosts in a format that can be serialized
-            bagging_members_safe  = [
-                x.get_booster().save_raw(raw_format='json')
-                for x in self.bagging_members
-            ],
+            bagging_members_safe = bagging_members_safe,
             # bagging_members  = self.bagging_members,
 
             # Random number used by the class, as 42
@@ -692,17 +699,20 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
 
     def __setstate__(self, state):
+        import json
+
         self.__dict__.update(state)
 
         self.bagging_members=list()
         for serialized in self.bagging_members_safe:
-            m=xgboost.XGBClassifier()
-            m.load_model(serialized)
-            # if not hasattr(m,'classes_'):
-            #     # Restore an XGBoostClassifier missing attribute that is
-            #     # not saved/unsaved
-            #     m.classes_ = self.xgboost_missing_classes_
-            self.bagging_members.append(m)
+            with tempfile.NamedTemporaryFile(suffix='.json', mode='w+', delete=False) as tmp:
+                json.dump(serialized, tmp)
+
+            x=xgboost.XGBClassifier()
+            x.load_model(tmp.name)
+            self.bagging_members.append(x)
+
+            pathlib.Path(tmp.name).unlink()
 
         del self.bagging_members_safe
 
