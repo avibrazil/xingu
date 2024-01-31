@@ -459,7 +459,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
         # |  3 |             0.942724 |            0.0572757 |        0 |
         # |  4 |             0.963377 |            0.036623  |        2 |
 
-        self.log('Validation: \n' + model.sets_estimations['validation'].head().to_markdown())
+        self.log('Validation sample: \n' + model.sets_estimations['validation'].head().to_markdown())
 
 
 
@@ -677,13 +677,16 @@ class XinguXGBoostClassifier(xingu.Estimator):
             bagging_size     = self.bagging_size,
 
             # Array of trained XGBoosts in a format that can be serialized
-            bagging_members_safe  = [x.get_booster().save_raw() for x in self.bagging_members],
+            bagging_members_safe  = [
+                x.get_booster().save_raw(raw_format='json')
+                for x in self.bagging_members
+            ],
             # bagging_members  = self.bagging_members,
 
             # Random number used by the class, as 42
             random_state     = self.random_state,
 
-            xgboost_missing_classes_ = self.bagging_members[0].classes_,
+            # xgboost_missing_classes_ = self.bagging_members[0].classes_,
         )
 
 
@@ -695,10 +698,10 @@ class XinguXGBoostClassifier(xingu.Estimator):
         for serialized in self.bagging_members_safe:
             m=xgboost.XGBClassifier()
             m.load_model(serialized)
-            if not hasattr(m,'classes_'):
-                # Restore an XGBoostClassifier missing attribute that is
-                # not saved/unsaved
-                m.classes_ = self.xgboost_missing_classes_
+            # if not hasattr(m,'classes_'):
+            #     # Restore an XGBoostClassifier missing attribute that is
+            #     # not saved/unsaved
+            #     m.classes_ = self.xgboost_missing_classes_
             self.bagging_members.append(m)
 
         del self.bagging_members_safe
