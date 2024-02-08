@@ -633,6 +633,7 @@ class Model(object):
                                 self.coach.tables['sets'].name,
                                 if_exists='append',
                                 index=False,
+                                method='multi',
                                 con=db
                             )
                         )
@@ -715,6 +716,7 @@ class Model(object):
                         name         = self.coach.tables['estimations'].name,
                         if_exists    = 'append',
                         index        = False,
+                        method       = 'multi',
                     )
                 )
 
@@ -1273,6 +1275,7 @@ class Model(object):
                         name           = self.coach.tables['metrics_model'].name,
                         if_exists      = 'append',
                         index          = False,
+                        method         = 'multi',
                         con            = db
                     )
                 )
@@ -1414,6 +1417,7 @@ class Model(object):
                         name         = self.coach.tables['metrics_estimation'].name,
                         if_exists    = 'append',
                         index        = False,
+                        method       = 'multi',
                         con          = db
                     )
 
