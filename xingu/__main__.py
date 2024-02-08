@@ -504,12 +504,12 @@ def main():
     if 'DATAPROVIDER_LIST' in args:
         dpf = DataProviderFactory(
             providers_list=[x.strip() for x in args['DATAPROVIDER_LIST'].split(',')],
-            providers_folder=args['DATAPROVIDER_FOLDER'],
+            providers_folder=args['DATAPROVIDER_FOLDER'] if 'DATAPROVIDER_FOLDER' in args else None,
             providers_extra_objects=simpledp,
         )
     else:
         dpf = DataProviderFactory(
-            providers_folder=args['DATAPROVIDER_FOLDER'],
+            providers_folder=args['DATAPROVIDER_FOLDER'] if 'DATAPROVIDER_FOLDER' in args else None,
             providers_extra_objects=simpledp,
         )
 
