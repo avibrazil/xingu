@@ -952,7 +952,10 @@ class Coach:
 
             self.logger.debug(f"Data source «{databases[i]}» is {current['conn']}. Created with config: {engine_config}.")
 
-        return self.databases[nickname]['conn']
+        if nickname in self.databases.keys():
+            return self.databases[nickname]['conn']
+        else:
+            raise KeyError(f"No database with nickname «{nickname}». Only those ones are known: {list(self.databases.keys())}")
 
 
 
