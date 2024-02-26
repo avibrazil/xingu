@@ -1077,11 +1077,11 @@ class Coach:
         )
 
         if 'awsathena' not in con['url']:
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].time),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_status',           self.tables[table_name].status),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].c.time),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].c.dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].c.train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].c.train_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_status',           self.tables[table_name].c.status),
 
 
         table_name='sets'
@@ -1125,9 +1125,9 @@ class Coach:
         )
 
         if 'awsathena' not in con['url']:
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].c.dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].c.train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].c.train_id),
 
 
         table_name='metrics_model'
@@ -1182,10 +1182,10 @@ class Coach:
         )
 
         if 'awsathena' not in con['url']:
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].time),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].c.time),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].c.dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].c.train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].c.train_id),
 
 
         table_name='metrics_estimation'
@@ -1240,10 +1240,10 @@ class Coach:
         )
 
         if 'awsathena' not in con['url']:
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].time),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].c.time),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].c.dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].c.train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].c.train_id),
 
 
         table_name='estimations'
@@ -1292,10 +1292,10 @@ class Coach:
         )
 
         if 'awsathena' not in con['url']:
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].time),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].dataprovider_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].train_session_id),
-            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].train_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_time',             self.tables[table_name].c.time),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_dataprovider_id',  self.tables[table_name].c.dataprovider_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_session_id', self.tables[table_name].c.train_session_id),
+            sqlalchemy.Index(self.xingu_db_table_prefix + table_name + '_by_train_id',         self.tables[table_name].c.train_id),
 
 
         self.logger.info('Going to create tables on Xingu DB')
