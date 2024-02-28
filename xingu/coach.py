@@ -407,7 +407,7 @@ class Coach:
                     )
                 )
 
-                if self.get_config('SAVE_SETS'):
+                if self.get_config('SAVE_SETS', True):
                     # Save trainsets to DB
                     tasks.append(executor.submit(model.trainsets_save))
 
