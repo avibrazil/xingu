@@ -382,8 +382,6 @@ class Coach:
                 model=self.post_train_queue.get()
                 self.post_train_queue.task_done()
 
-                self.logger.debug('Post process queue size after queue.get(): ' + str(self.post_train_queue.qsize()))
-
                 if model is None:
                     # A sign that all was done. Exit the endless loop.
                     self.post_processing=False
@@ -407,7 +405,7 @@ class Coach:
                     )
                 )
 
-                if self.get_config('SAVE_SETS', True):
+                if self.get_config('SAVE_SETS', 'true', cast=bool):
                     # Save trainsets to DB
                     tasks.append(executor.submit(model.trainsets_save))
 

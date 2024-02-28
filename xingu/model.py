@@ -594,49 +594,59 @@ class Model(object):
             with self.coach.get_db_connection('xingu').connect() as db:
                 # Record sets in DB
                 for part in self.sets.keys():
-                    self.log(f'Saving {part} dataset to DB')
+                    self.log(f'Saving «{part}» dataset to DB')
 
                     target=self.dp.get_target()
                     if target in self.sets[part].columns:
-                        (
-                            # Start with just the index and target column
-                            self.sets[part][[target]]
+                        import sqlalchemy
+                        try:
+                            (
+                                # Start with just the index and target column
+                                self.sets[part][[target]]
 
-                            # Standardize target column name
-                            .rename(columns={target: 'target'})
+                                # Standardize target column name
+                                .rename(columns={target: 'target'})
 
-                            # Tag table with context
-                            .assign(
-                                set                = part,
-                                dataprovider_id    = self.dp.id,
-                                train_id           = self.train_id,
-                                train_session_id   = self.train_session_id,
+                                # Tag table with context
+                                .assign(
+                                    set                = part,
+                                    dataprovider_id    = self.dp.id,
+                                    train_id           = self.train_id,
+                                    train_session_id   = self.train_session_id,
+                                )
+
+                                # Standardize index
+                                .reset_index(names='index')
+
+                                # Force data types, some DBs (cough Athena cough) will complain otherwise
+                                .assign(
+                                    index=lambda table: table['index'].astype(str),
+                                    target=lambda table: table.target.astype(float),
+                                )
+
+                                # Write debug message to console
+                                .pipe(lambda table: ddebug(
+                                    table,
+                                    f'{part}: {table.shape[0]}×{table.shape[1]}'
+                                ))
+
+                                # Commit to DB
+                                .to_sql(
+                                    self.coach.tables['sets'].name,
+                                    if_exists='append',
+                                    index=False,
+                                    method='multi',
+                                    con=db
+                                )
                             )
-
-                            # Standardize index
-                            .reset_index(names='index')
-
-                            # Force data types, some DBs (cough Athena cough) will complain otherwise
-                            .assign(
-                                index=lambda table: table['index'].astype(str),
-                                target=lambda table: table.target.astype(float),
+                        except sqlalchemy.exc.OperationalError as e:
+                            m=(
+                                "Failed to write sets to DB due to a bug "
+                                "between Pandas and SQLite. Set "
+                                "SAVE_SETS=false to ignore silently."
                             )
-
-                            # Write debug message to console
-                            .pipe(lambda table: ddebug(
-                                table,
-                                f'{part}: {table.shape[0]}×{table.shape[1]}'
-                            ))
-
-                            # Commit to DB
-                            .to_sql(
-                                self.coach.tables['sets'].name,
-                                if_exists='append',
-                                index=False,
-                                method='multi',
-                                con=db
-                            )
-                        )
+                            self.log(m,level=logging.WARNING)
+                            raise e
 
             self.log_train_status('train_savesets_end')
 
