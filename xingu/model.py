@@ -2163,21 +2163,55 @@ class Model(object):
         This method will use pandas.read_csv(), pandas.read_parquet() or
         pandas.read_json() depending on text found in the URL.
 
+        Or, pass format='parquet|json|csv|txt' to the params dict to force a
+        specific format.
+
         The params dict will be passed to the pandas method and might have any
         parameters accepted by these methods.
+
+        Example of `DataProvider.train_dataset_sources` entries that will be
+        processed by this method:
+
+        train_dataset_sources = dict(
+            df1 = dict(
+                url = 's3://bucket/folder1/object',
+                params = dict(format='parquet')
+            ),
+            df2 = dict(
+                url = 'some/local/file.txt',
+                # format is infered from URL. no need to pass it here
+                params = dict(sep='|')
+            ),
+            df3 = dict(
+                url = 's3://bucket/folder1/object2',
+                params = dict(
+                    format='json',
+
+                    # Arguments for pandas.read_json():
+                    orient='records',
+                    convert_axes=True,
+                )
+            ),
+        )
         """
         token_map=dict(
             json     = pandas.read_json,
             parquet  = pandas.read_parquet,
+            csv      = pandas.read_csv,
+            txt      = pandas.read_csv,
         )
 
         # Find correct Pandas method we´ll use.
         # Start with a default to pandas.read_csv()
         pandas_method = pandas.read_csv
-        for token in token_map.keys():
-            if token in url:
-                pandas_method = token_map[token]
-                break
+        if 'format' in params:
+            pandas_method = token_map[params['format']]
+            del params['format']
+        else:
+            for token in token_map.keys():
+                if token in url:
+                    pandas_method = token_map[token]
+                    break
 
         self.log(
             level=logging.DEBUG,
