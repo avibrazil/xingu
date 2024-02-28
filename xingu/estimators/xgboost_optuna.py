@@ -527,8 +527,6 @@ class XinguXGBoostClassifier(xingu.Estimator):
                     for col in self.bagging_members[0].classes_
                 }
 
-            self.log(f"Bagging aggregation strategy: {agg_strategy}",level=logging.DEBUG)
-
             return (
                 self.predict_multi(data,method,class_index)
 
