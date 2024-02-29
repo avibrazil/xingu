@@ -2214,7 +2214,7 @@ class Model(object):
         # Find correct Pandas method we´ll use.
         # Start with a default to pandas.read_csv()
         pandas_method = pandas.read_csv
-        if 'format' in params:
+        if params is not None and 'format' in params:
             pandas_method = token_map[params['format']]
             del params['format']
         else:
