@@ -1046,7 +1046,7 @@ class Model(object):
             s=template.format(
                 dp=self.dp.id,
                 complete_train_id=self.get_full_train_id(),
-                trained=self.trained.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                trained=self.trained.strftime("%Y-%m-%d %H:%M:%S %Z") if type(self.trained)==datetime.datetime else '(untrained)',
             ),
         )
 
@@ -2273,7 +2273,10 @@ class Model(object):
         OR
 
             dict(
-                url="file:/..." | "http://..." | "s3://..."
+                url="file:/..." | "http://..." | "s3://...",
+                params=dict(
+                    # parameters to pandas.read_{csv|parquet|json}()
+                )
             )
 
         sourceid is the name of this source, as it appears in the DP's dict.
@@ -2397,7 +2400,11 @@ class Model(object):
             elif key_type == 'url':
                 df = self.data_source_to_data_from_url(
                     query_text,
-                    params=data_source['params'] if 'params' in data_source else dict()
+                    params=(
+                        data_source['params']
+                        if 'params' in data_source and pandas.notna(data_source['params'])
+                        else dict()
+                    )
                 )
 
             self.log(
