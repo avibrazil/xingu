@@ -422,10 +422,17 @@ class Model(object):
 
             self.dp.post_process_after_hyperparam_optimize(self)
 
-            self.log(
-                message=f"Hyperparameters from {self.algo_params['source_train_id']}:\n" + pandas.Series(self.algo_params['hyperparams']).to_markdown(),
-                level=logging.DEBUG
-            )
+            if self.algo_params['hyperparams']:
+                self.log(
+                    message=f"Hyperparameters from {self.algo_params['source_train_id']}:\n" + pandas.Series(self.algo_params['hyperparams']).to_markdown(),
+                    level=logging.DEBUG
+                )
+            else:
+                # Hyperparameters are empty. Warn user.
+                self.log(
+                    message="Training with no hyperparameters. This is probably undesired behavior.",
+                    level=logging.WARNING
+                )
 
             self.context='train_fit'
             self.log_train_status('train_fit_start')
