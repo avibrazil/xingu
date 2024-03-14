@@ -205,13 +205,13 @@ class XinguXGBoostClassifier(xingu.Estimator):
         ]
 
         self.optimizer = optuna.create_study(
-            study_name=f"{model.dp.id} • {model.get_full_train_id()}",
+            study_name=f"{model.dp.id} • {model.train_session_id}",
             directions=["minimize", "maximize"],
             storage=(
                 "sqlite:///" +
                 str(
                     pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
-                    f"{model.dp.id} • {model.get_full_train_id()} • optimizer.db"
+                    "optimizer.db"
                 )
             ),
             load_if_exists=True,
