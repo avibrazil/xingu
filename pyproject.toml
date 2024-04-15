@@ -17,7 +17,7 @@ keywords = [
 dependencies = [
     "pandas",
     "python-decouple",
-    "SQLAlchemy < 2",
+    "SQLAlchemy",
     "tabulate",
     "pygit2",
     "randomname",

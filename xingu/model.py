@@ -1346,8 +1346,11 @@ class Model(object):
 
 
     def compute_batch_model_metrics_classical(self, XY: pandas.DataFrame, Y_pred: pandas.DataFrame) -> dict:
-        mask = ~XY[self.dp.get_target()].isna()
-        return self.compute_trainsets_model_metrics_classical(XY[mask],Y_pred[mask])
+        if self.dp.get_target() in XY.columns:
+            mask = ~XY[self.dp.get_target()].isna()
+            return self.compute_trainsets_model_metrics_classical(XY[mask],Y_pred[mask])
+        else:
+            return dict()
 
 
 
