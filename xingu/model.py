@@ -172,15 +172,6 @@ class Model(object):
 
             self.log(message=str(self.dp.get_estimator_class()))
 
-            if self.dp.hollow:
-                self.estimator     = None
-            else:
-                self.estimator     = self.dp.get_estimator_class()(
-                    **self.dp.get_estimator_class_params(),
-                    params      = self.dp.get_estimator_params(),
-                    hyperparams = self.dp.get_estimator_hyperparams(),
-                )
-
         if delayed_prereq_binding is False:
             self.load_pre_req_model()
 
@@ -417,7 +408,15 @@ class Model(object):
 
         self.log_train_status('train_dataprep_end')
 
-        if not self.dp.hollow:
+        if self.dp.hollow:
+            self.estimator     = None
+        else:
+            self.estimator     = self.dp.get_estimator_class()(
+                **self.dp.get_estimator_class_params(),
+                params      = self.dp.get_estimator_params(),
+                hyperparams = self.dp.get_estimator_hyperparams(),
+            )
+
             self.hyperparam_optimize()
 
             self.dp.post_process_after_hyperparam_optimize(self)
