@@ -2644,7 +2644,17 @@ class Model(object):
             level=logging.DEBUG,
             message=(
                 "Data extraction plan:\n" + (
-                    data_extraction_plan[['name','source','url']]
+                    data_extraction_plan
+                    .assign(
+                        **{
+                            'query or url': lambda table: (
+                                table.url.combine_first(table['query'])
+                                .replace(r'\n+|\s+',' ',regex=True)
+                                .replace(r'^(.{30}).*(.{15})$', r'\g<1> … \g<2>',regex=True)
+                            )
+                        }
+                    )
+                    [['name','source','query or url']]
                     .reset_index()
                     .to_markdown()
                 )
