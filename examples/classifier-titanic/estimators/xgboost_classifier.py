@@ -7,6 +7,7 @@ import concurrent.futures
 import decouple
 import numpy
 import pandas
+import sklearn
 import xgboost
 import optuna
 
@@ -15,7 +16,8 @@ import xingu
 
 class XinguXGBoostClassifier(xingu.Estimator):
     """
-    Multi-XGBoost implementation of a xingu.Estimator optimized by Optuna.
+    Multi-XGBoost implementation of a xingu.Estimator optimized by Optuna's
+    genetic algorithms.
     """
 
 
@@ -28,6 +30,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 optimization_trials=10,
                 optimization_timeout=None,
                 report_interval=None,
+                fit_params: dict=dict(),
                 **kwargs
     ):
         """
@@ -65,6 +68,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
         self.optimization_timeout = optimization_timeout
         self.report_interval = report_interval
         self.bagging_members = []
+        self.fit_params = fit_params
 
 
 
@@ -84,10 +88,51 @@ class XinguXGBoostClassifier(xingu.Estimator):
         return text
 
 
+    def get_train_folds(self, train_data: pandas.DataFrame):
+        """
+        Sets self.folds like this:
+
+        self.folds = [
+            (fold1_train_index, fold1_validation_index),
+            (fold2_train_index, fold2_validation_index),
+            ...
+            (foldN_train_index, foldN_validation_index),
+        ]
+
+        The indexes are the original index elements from train_data to be used
+        as train_data.loc[fold1_train_index]. They are computed from the less
+        useful sequential indexes returned by StratifiedKFold.
+
+        train_data must have column named 'stratify' and a primary key index.
+
+        Return self.folds.
+        """
+        if hasattr(self,'folds'):
+            return self.folds
+
+        skf = sklearn.model_selection.StratifiedKFold(
+            n_splits=self.bagging_size,
+            shuffle=True,
+            random_state=self.random_state,
+        )
+
+        self.folds = [
+            (
+                # Convert positional index as returned by SKFold into the
+                # DataFrame's original index
+                train_data.iloc[itrain].index,
+                train_data.iloc[ival].index
+            )
+            for (itrain,ival) in skf.split(
+                train_data,
+                train_data.stratify
+            )
+        ]
+
+        return self.folds
+
 
     def hyperparam_optimize(self, model):
-        import sklearn
-
         def objective(trial, model):
             """
             Your DataProvider must have something like:
@@ -141,6 +186,10 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
                 # self.log(train_df.iloc[itrain].head(10).to_markdown())
 
+                sample_weight = None
+                if 'sample_weight' in self.fit_params:
+                    sample_weight = self.fit_params['sample_weight'].loc[itrain]
+
                 classifier.fit(
                     verbose=False,
                     X=train_df.loc[itrain][features],
@@ -148,7 +197,8 @@ class XinguXGBoostClassifier(xingu.Estimator):
                     eval_set=[
                         (train_df.loc[itrain][features], train_df.loc[itrain][target]),
                         (train_df.loc[ival][features],   train_df.loc[ival][target]),
-                    ]
+                    ],
+                    sample_weight=sample_weight,
                 )
 
                 # Cirurgically set predicts in current ival rows
@@ -173,24 +223,8 @@ class XinguXGBoostClassifier(xingu.Estimator):
             return auc_train-auc_val, auc_val
 
 
-        skf = sklearn.model_selection.StratifiedKFold(
-            n_splits=self.bagging_size,
-            shuffle=True,
-            random_state=self.random_state,
-        )
-
-        self.folds = [
-            (
-                # Convert positional index as returned by SKFold into the
-                # DataFrame's original index
-                model.sets['train'].iloc[itrain].index,
-                model.sets['train'].iloc[ival].index
-            )
-            for (itrain,ival) in skf.split(
-                model.sets['train'],
-                model.sets['train'].stratify
-            )
-        ]
+        # Compute self.folds
+        self.get_train_folds(model.sets['train'])
 
         self.optimizer = optuna.create_study(
             study_name=f"{model.dp.id} • {model.train_session_id}",
@@ -259,7 +293,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
                     )
                 )
 
-                # Compute statistics about trials and predict ETA
+                # Compute and report statistics about trials and predict ETA
 
                 trials=(
                     pandas.DataFrame(
@@ -329,23 +363,29 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
 
     def fit_single(self, data, itrain, ival, features, target) -> xgboost.XGBClassifier:
-        import sklearn
-
         clf = xgboost.XGBClassifier(
             **self.params,
             **self.hyperparams
         )
 
+        self.logger.debug("Fit params:" + str(self.fit_params))
+
+        sample_weight = None
+        if 'sample_weight' in self.fit_params:
+            self.logger.debug("XGBoost sample_weight:\n" + str(self.fit_params['sample_weight'].loc[itrain].sample(10)))
+            sample_weight = self.fit_params['sample_weight'].loc[itrain]
+
         # Actual training session begins
 
         clf.fit(
             verbose=False,
-            X=data.iloc[itrain][features],
-            y=data.iloc[itrain][target],
+            X=data.loc[itrain][features],
+            y=data.loc[itrain][target],
             eval_set=[
-                (data.iloc[itrain][features], data.iloc[itrain][target]),
-                (data.iloc[ival][features],   data.iloc[ival][target]),
-            ]
+                (data.loc[itrain][features], data.loc[itrain][target]),
+                (data.loc[ival][features],   data.loc[ival][target]),
+            ],
+            sample_weight=sample_weight,
         )
 
         return clf
@@ -353,9 +393,6 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
 
     def fit(self, datasets, features, target, model=None):
-        import sklearn
-        # Add attribute 'max_workers=1' to inhibit parallelism
-
         max_workers = decouple.config('PARALLEL_ESTIMATORS_MAX_WORKERS', default=0, cast=int)
         if max_workers == '' or max_workers == 0:
             max_workers=None
@@ -363,25 +400,19 @@ class XinguXGBoostClassifier(xingu.Estimator):
         else:
             self.logger.info(f'{max_workers} parallel estimators to train')
 
-        skf = sklearn.model_selection.StratifiedKFold(
-            n_splits=self.bagging_size,
-            shuffle=True,
-            random_state=self.random_state,
-        )
-
         # Prepare infrastructure for validation data
         datasets['validation']=datasets['train']
         if model is not None and not hasattr(model, 'sets_estimations'):
             model.sets_estimations=dict()
             model.sets_estimations['validation']=None
 
+        # Compute self.folds
+        self.get_train_folds(datasets['train'])
+
         executor=concurrent.futures.ThreadPoolExecutor(thread_name_prefix='fit', max_workers=max_workers)
         tasks = dict()
         index = 0
-        for (itrain,ival) in skf.split(
-                    datasets['train'],
-                    datasets['train'].stratify
-                ):
+        for (itrain,ival) in self.folds:
 
             self.log(f'Trigger parallel train of XGBoost estimator #{index+1} of {self.bagging_size}...')
 
@@ -412,7 +443,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
             # Collect Ŷ for validation data
             Ŷ_val = self.predict_single(
-                data           = datasets['train'].iloc[tasks[task]][features],
+                data           = datasets['train'].loc[tasks[task]][features],
                 method         = 'predict_proba',
                 bagging_member = index,
             )
