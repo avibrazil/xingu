@@ -71,7 +71,7 @@ class Estimator(object):
     def is_classifier(self):
         pass
 
-    
+
 
     def __repr__(self):
         return '{klass}()'.format(klass=type(self).__name__)
@@ -92,7 +92,7 @@ class Estimator(object):
     def setup_logger(self):
         if not hasattr(self,'logger'):
             # Setup logging
-            self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+            self.logger = logging.getLogger(self.__class__.__module__ + '.' + self.__class__.__qualname__)
 
 
 

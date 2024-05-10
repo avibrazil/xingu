@@ -377,7 +377,7 @@ class DataProvider(object):
 
     def get_logger(self):
         if not hasattr(self,'logger'):
-            self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+            self.logger = logging.getLogger(self.__class__.__module__ + '.' + self.__class__.__qualname__)
 
         return self.logger
 

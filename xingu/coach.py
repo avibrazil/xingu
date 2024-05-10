@@ -47,7 +47,7 @@ class Coach:
         self.config=ConfigManager()
 
         # Setup logging
-        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__module__ + '.' + self.__class__.__qualname__)
 
         # Turn attribute `databases` into a private copy
         self.databases=dict()

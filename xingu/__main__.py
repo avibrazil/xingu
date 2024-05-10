@@ -14,7 +14,25 @@ from . import ConfigManager
 def prepare_logging(level=logging.INFO):
     # Switch between INFO/DEBUG while running in production/developping:
 
-    # Configure logging for PanModel
+    # Configure logging for the command line
+
+    FORMATTER = logging.Formatter("%(asctime)s|%(levelname)s|%(name)s|%(message)s")
+    HANDLER = logging.StreamHandler()
+    HANDLER.setFormatter(FORMATTER)
+
+    logger = logging.getLogger()
+    logger.addHandler(HANDLER)
+    logger.setLevel(level)
+
+    return logger
+
+
+
+
+def prepare_logging_OLD(level=logging.INFO):
+    # Switch between INFO/DEBUG while running in production/developping:
+
+    # Configure logging for the command line
 
     FORMATTER = logging.Formatter("%(asctime)s|%(levelname)s|%(name)s|%(message)s")
     HANDLER = logging.StreamHandler()
