@@ -2691,6 +2691,59 @@ class Model(object):
 
 
 
+    ###########################################################################
+    ##
+    ##  API infrastructure
+    ##
+    ##
+    ###########################################################################
+
+    def get_api_router(self):
+        import functools
+        import fastapi
+
+        # Act as singleton; if we already have an API router, return it
+        if hasattr(self,'api_router'):
+            return self.api_router
+
+        # Make the router with whats in the DP, or fail
+        if hasattr(self.dp,'api_router') and self.dp.api_router not None:
+            # Example self.dp.api_router = {
+            #     '/model/xyz/v1/predict': (internal_method1,other_unimplementd_things),
+            #     '/model/xyz/v1/info':    (internal_method2,other_unimplementd_things),
+            #     '/model/xyz/v1/status':  (internal_method3,other_unimplementd_things),
+            # }
+            self.api_router=fastapi.APIRouter()
+            for endpoint in self.dp.api_router:
+                self.api_router.add_api_route(
+                    endpoint,
+                    functools.partial(self.dp.api_router[endpoint][0], model=self),
+                    methods=["POST"]
+                )
+            return self.api_router
+        else:
+            raise NotImplementedError("Model doesn't provide an API.")
+
+
+#     def api_call(self, request):
+#         """
+#         Called by `xingu-api` command if the associated DataProvider has an
+#         `api_uri` attribute with a URI.
+
+#         Simply calls `self.dp.api_call()` with the correct parameters.
+#         """
+#         return self.dp.api_call(request,self)
+
+
+
+
+    ###########################################################################
+    ##
+    ##  Operational methods
+    ##
+    ##
+    ###########################################################################
+
     def time_fs_str(time):
         time_tpl='%Y.%m.%d-%H.%M.%S'
         return time.strftime(time_tpl)
