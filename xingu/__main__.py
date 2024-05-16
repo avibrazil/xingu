@@ -24,6 +24,17 @@ def prepare_logging(level=logging.INFO):
     logger.addHandler(HANDLER)
     logger.setLevel(level)
 
+    # Suppress well known very annoying modules
+    annoying="""
+        aiobotocore
+        boto3
+        botocore
+    """.split()
+
+    for stop_annoying in annoying:
+        annoying_logger = logging.getLogger(stop_annoying)
+        annoying_logger.setLevel(logging.WARNING)
+
     return logger
 
 
