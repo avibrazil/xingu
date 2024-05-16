@@ -30,6 +30,7 @@ def prepare_logging(level=logging.INFO):
         boto3
         botocore
         s3fs
+        fsspec
     """.split()
 
     for stop_annoying in annoying:
