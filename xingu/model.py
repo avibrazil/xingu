@@ -163,14 +163,16 @@ class Model(object):
             # Store more contextual and informative metadata from the Coach and environment
             self.user_name         = self.get_config('USERNAME',os.environ.get('USER', os.environ.get('USERNAME')))
             self.host_name         = self.get_config('HOSTNAME',socket.gethostname())
-            self.git_branch        = self.coach.git_repo.head.name if self.coach.git_repo else None
-            self.git_commit        = self.coach.git_repo.head.target.hex if self.coach.git_repo else None
+
+            # Git metadata embedded in models
             self.github_actor      = self.get_config('GITHUB_ACTOR', None)
             self.github_workflow   = self.get_config('GITHUB_WORKFLOW', None)
             self.github_run_id     = self.get_config('GITHUB_RUN_ID', None)
             self.github_run_number = self.get_config('GITHUB_RUN_NUMBER', None)
+            self.git_branch        = self.coach.git_repo.head.name if self.coach.git_repo else None
+            self.git_commit        = str(self.coach.git_repo.head.target) if self.coach.git_repo else None
 
-            self.log(message=str(self.dp.get_estimator_class()))
+            self.logger.info(str(self.dp.get_estimator_class()))
 
         if delayed_prereq_binding is False:
             self.load_pre_req_model()

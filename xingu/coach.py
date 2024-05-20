@@ -57,6 +57,7 @@ class Coach:
             self.git_repo=pygit2.Repository(self.get_config('PROJECT_HOME'))
             self.logger.debug("Using git repo on {}".format(self.git_repo))
         except:
+            self.logger.warning("Sorry, your code apparently not under a git repo; can't add git metadata to models")
             self.git_repo=None
 
         self.dp_factory=dp_factory
@@ -503,14 +504,17 @@ class Coach:
                     time              = datetime.datetime.now(datetime.timezone.utc),
                     user_name         = self.get_config('USERNAME',os.environ.get('USER', os.environ.get('USERNAME'))),
                     host_name         = self.get_config('HOSTNAME',socket.gethostname()),
-                    git_branch        = self.git_repo.head.name if self.git_repo else None,
-                    git_commit        = self.git_repo.head.target.hex if self.git_repo else None,
-                    github_actor      = self.get_config('GITHUB_ACTOR', None),
-                    github_workflow   = self.get_config('GITHUB_WORKFLOW', None),
-                    github_run_id     = self.get_config('GITHUB_RUN_ID', None),
-                    github_run_number = self.get_config('GITHUB_RUN_NUMBER', None),
+
                     trained_in_session= self.trained_in_session,
-                    train_session_id  = self.train_session_id
+                    train_session_id  = self.train_session_id,
+
+                    # Code repository metadata
+                    git_branch        = self.git_repo.head.name              if self.git_repo else None,
+                    git_commit        = str(self.git_repo.head.target)       if self.git_repo else None,
+                    github_actor      = self.get_config('GITHUB_ACTOR',      None),
+                    github_workflow   = self.get_config('GITHUB_WORKFLOW',   None),
+                    github_run_id     = self.get_config('GITHUB_RUN_ID',     None),
+                    github_run_number = self.get_config('GITHUB_RUN_NUMBER', None),
                 )
             )
 
