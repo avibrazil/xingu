@@ -31,6 +31,7 @@ def prepare_logging(level=logging.INFO):
         botocore
         s3fs
         fsspec
+        matplotlib.font_manager
     """.split()
 
     for stop_annoying in annoying:
