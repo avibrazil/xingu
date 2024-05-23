@@ -11,6 +11,8 @@ import matplotlib
 import pandas
 import sklearn.preprocessing
 import sklearn.model_selection
+import pydantic
+
 import xingu
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(''), '..')))
@@ -49,6 +51,10 @@ class DPTitanicSurvivor(xingu.DataProvider):
         FamilySize
         IsAlone
     """.split()
+
+    api_router = {
+        '/will_survive': (api_predict_survive)
+    }
 
     encode_cols = ['Sex','Embarked']
 
@@ -366,6 +372,20 @@ class DPTitanicSurvivor(xingu.DataProvider):
         """
         self.post_process_after_hyperparam_optimize(model)
 
+
+
+    ###########################################################################
+    ##
+    ##  API methods
+    ##
+    ##
+    ###########################################################################
+
+    def api_predict_survive(
+            self,
+            request_params: pydantic.create_model ,
+            model
+        ):
 
 
     ###########################################################################
