@@ -167,7 +167,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
 
 
-    def fit(self, datasets, features, target):
+    def fit(self, datasets, features, target, model):
         import sklearn
         # Add attribute 'max_workers=1' to inhibit parallelism
 
