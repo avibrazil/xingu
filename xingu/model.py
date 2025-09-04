@@ -2710,8 +2710,8 @@ class Model(object):
         if hasattr(self.dp,'api_router') and self.dp.api_router not None:
             # Example self.dp.api_router = {
             #     '/model/xyz/v1/predict': (internal_method1,other_unimplementd_things),
-            #     '/model/xyz/v1/info':    (internal_method2,other_unimplementd_things),
-            #     '/model/xyz/v1/status':  (internal_method3,other_unimplementd_things),
+            #     '/other_path/xyz/v1/info':    (internal_method2,other_unimplementd_things),
+            #     '/whatever/abc/v1/status':  (internal_method3,other_unimplementd_things),
             # }
             self.api_router=fastapi.APIRouter()
             for endpoint in self.dp.api_router:

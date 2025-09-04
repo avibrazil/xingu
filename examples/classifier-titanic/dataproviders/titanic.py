@@ -53,7 +53,7 @@ class DPTitanicSurvivor(xingu.DataProvider):
     """.split()
 
     api_router = {
-        '/will_survive': (api_predict_survive)
+        '/will_survive': (self.api_predict_survive)
     }
 
     encode_cols = ['Sex','Embarked']
@@ -383,9 +383,17 @@ class DPTitanicSurvivor(xingu.DataProvider):
 
     def api_predict_survive(
             self,
-            request_params: pydantic.create_model ,
+            request_params: pydantic.create_model(
+                'TitanicRequest',
+                **{
+                    v: (float,...)
+                    for v in x_features
+                }
+            ),
             model
         ):
+        print(request_params)
+
 
 
     ###########################################################################
