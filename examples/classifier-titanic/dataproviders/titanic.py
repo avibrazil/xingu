@@ -15,7 +15,7 @@ import xingu
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(''), '..')))
 
-import estimators.xgboost_classifier
+import xingu.estimators.xgboost_optuna
 
 
 class DPTitanicSurvivor(xingu.DataProvider):
@@ -57,7 +57,7 @@ class DPTitanicSurvivor(xingu.DataProvider):
     age_categories = [   1,       2,       3,       4            ]
 
 
-    estimator_class = estimators.xgboost_classifier.XinguXGBoostClassifier
+    estimator_class = xingu.estimators.xgboost_optuna.XinguXGBoostClassifier
 
     ## XGBoost with Optuna...
     estimator_class_params = dict(
@@ -86,14 +86,14 @@ class DPTitanicSurvivor(xingu.DataProvider):
 
     # Search space for Optuna
     estimator_hyperparams_search_space = dict(
-        n_estimators            = ('int',        dict(low=10,    high=500)),
-        alpha                   = ('float',      dict(low=1e-3,  high=10)),
-        gamma                   = ('float',      dict(low=1e-3,  high=10)),
-        colsample_bytree        = ('categorical',dict(choices=[0.5, 0.6, 0.7, 0.8, 0.9, 1.0])),
-        subsample               = ('categorical',dict(choices=[0.5, 0.6, 0.7, 0.8, 0.9, 1.0])),
-        learning_rate           = ('float',      dict(low=0.01,  high=0.05)),
-        max_depth               = ('int',        dict(low=3,     high=7)),
-        min_child_weight        = ('int',        dict(low=1,     high=10)),
+        n_estimators            = ('int',         dict(low=10,    high=500)),
+        alpha                   = ('float',       dict(low=1e-3,  high=10)),
+        gamma                   = ('float',       dict(low=1e-3,  high=10)),
+        colsample_bytree        = ('categorical', dict(choices=[0.5, 0.6, 0.7, 0.8, 0.9, 1.0])),
+        subsample               = ('categorical', dict(choices=[0.5, 0.6, 0.7, 0.8, 0.9, 1.0])),
+        learning_rate           = ('float',       dict(low=0.01,  high=0.05)),
+        max_depth               = ('int',         dict(low=3,     high=7)),
+        min_child_weight        = ('int',         dict(low=1,     high=10)),
         **{
             'lambda'            : ('float',     dict(low=1e-3,  high=10)),
         }
