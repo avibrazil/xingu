@@ -113,6 +113,7 @@ class DPTitanicSurvivor(xingu.DataProvider):
         'lambda': 4.920621243793648
     }
 
+    # Data need to be downloaded manually from https://www.kaggle.com/competitions/titanic/data
     train_dataset_sources = dict(
         train = dict(
             url = 'data/train.csv',
