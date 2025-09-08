@@ -61,30 +61,32 @@ class DPTitanicSurvivor(xingu.DataProvider):
 
     ## XGBoost with Optuna...
     estimator_class_params = dict(
-        # Número de splits e número de algoritmos que serão treinados
+        # Number of cross validation splits and number of XGBoosts that will be trained
         bagging_size            = 3,
 
-        # A cada quantos segundos o otimizador e pareto-front incompletos
-        # são salvos
+        # Time interval in seconds on which the optimizer incomplete pareto-front
+        # graph will be saved
         report_interval         = 30,
 
-        # Número de iterações de otimização. Cada iteração
-        # treina {bagging_size} XGBoosts
-        optimization_trials     = 3000,
+        # Number of optimization interations. Each interation
+        # trains {bagging_size} XGBoosts
+        optimization_trials     = 5,
 
-        # Tempo máximo de otimização em segundos
+        # Maximum optimization time in seconds
         optimization_timeout    = 5*3600,
     )
 
+    # XGBoost initialization parameters
     estimator_params = dict(
         n_jobs                  = -1,
         objective               = 'binary:logistic',
         eval_metric             = 'logloss',
-        use_label_encoder       = False,
         missing                 = numpy.nan,
+        device                  = 'cuda',
     )
 
-    # Search space for Optuna
+    # Search space for Optuna. Optimization objective is to find best combined
+    # values inside these ranges
     estimator_hyperparams_search_space = dict(
         n_estimators            = ('int',         dict(low=10,    high=500)),
         alpha                   = ('float',       dict(low=1e-3,  high=10)),
@@ -95,12 +97,12 @@ class DPTitanicSurvivor(xingu.DataProvider):
         max_depth               = ('int',         dict(low=3,     high=7)),
         min_child_weight        = ('int',         dict(low=1,     high=10)),
         **{
-            'lambda'            : ('float',     dict(low=1e-3,  high=10)),
+            'lambda'            : ('float',       dict(low=1e-3,  high=10)),
         }
     )
 
     # Parameters computed from an optimization optuna's genetic algorithms
-    # [Val AUC, Train AUC-Val AUC] = [0.863929889298893, 0.006449178128144939]
+    # [Validation_AUC, Train_AUC-Validation-AUC] = [0.863929889298893, 0.006449178128144939]
     estimator_hyperparams = {
         'n_estimators': 18,
         'alpha': 0.6976961980825642,
