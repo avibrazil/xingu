@@ -19,7 +19,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
     """
 
 
-    def __init__(self, 
+    def __init__(self,
                          params: dict=None,
                          hyperparams: dict=None,
                          random_state=42,
