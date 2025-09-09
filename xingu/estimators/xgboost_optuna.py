@@ -1,145 +1,238 @@
 import os
+import pathlib
 import logging
+import pickle
 import concurrent.futures
 import decouple
 import numpy
 import pandas
-import xgboost
 import optuna
+import sklearn
+import xgboost
 
 import xingu
 
 
 class XinguXGBoostClassifier(xingu.Estimator):
     """
-    Multi-XGBoost implementation of an estimator optimized by Optuna.
+    Multi-XGBoost implementation of a classifier optimized by Optuna.
     """
 
 
-    def __init__(self, params: dict=None, hyperparams: dict=None, random_state=42, bagging_size=1, optimization_trials=10, **kwargs):
+    def __init__(self, 
+                         params: dict=None,
+                         hyperparams: dict=None,
+                         random_state=42,
+                         bagging_size=1,
+                         optimization_trials=10,
+                         optimization_report_interval=120,
+                         optimization_timeout=3*3600,
+                         **kwargs
+                ):
         super().__init__(params=params,hyperparams=hyperparams)
 
         self.bagging_size=bagging_size
         self.optimization_trials=optimization_trials
+        self.optimization_report_interval=optimization_report_interval
+        self.optimization_timeout=optimization_timeout
         self.bagging_members=[]
 
         self.random_state=random_state
 
 
 
-    def __repr__(self):
-        template='{klass}(size={size}, random_state={random_state}, members={members})'
+    def objective(self, trial, model, folds):
+        # Shortcuts
+        features     = model.dp.get_estimator_features_list()
+        target       = model.dp.get_target()
+        train_set    = model.sets['train']
 
-        text = template.format(
-            klass          = type(self).__name__,
-            size           = self.bagging_size,
-            random_state   = self.random_state,
-            members        = self.bagging_members
+        # The DataProvider class has a default implementation for
+        # get_estimator_optimization_search_space() method that returns
+        # whatever you have in your estimator_hyperparam_search_space
+        # attribute. You can reimplement this method as long as it returns
+        # something like this:
+        #
+        #     dict(
+        #         iterations              = ('int',        dict(low=10,    high=500)),
+        #         depth                   = ('int',        dict(low=1,     high=9)),
+        #         border_count            = ('int',        dict(low=1,     high=255)),
+        #         l2_leaf_reg             = ('int',        dict(low=2,     high=35)),
+        #         learning_rate           = ('loguniform', dict(low=0.01,  high=1.0)),
+        #         random_strength         = ('loguniform', dict(low=1e-9,  high=10)),
+        #         bagging_temperature     = ('float',      dict(low=0.0,   high=1.0)),
+        #         scale_pos_weight        = ('uniform',    dict(low=0.01,  high=1.0))
+        #     )
+        #
+        # This will be converted and used to optimize an estimator.
+
+        search_space = model.dp.get_estimator_optimization_search_space()
+        suggested_hyperparams = {
+            # Convert the DataProvider.estimator_hyperparam_search_space
+            # dict into Optuna´s trial.suggest_*() calls
+            p: getattr(trial,'suggest_' + search_space[p][0])(
+                p,
+                **search_space[p][1]
+            )
+            for p in search_space
+        }
+
+        # Create an DataFrame with no columns for now, just to index, so
+        # we can hold our predicts for both train and valtidation
+        predicts=pandas.DataFrame(index=train_set.index)
+
+        for fold in folds:
+            # Train 1 classifier for each fold, use current fold data as train
+            # set
+            classifier = xgboost.XGBClassifier(
+                random_state=self.random_state,
+                **self.params,
+                **suggested_hyperparams
+            )
+
+            classifier.fit(
+                X = train_set.loc[fold[0]][features],
+                y = train_set.loc[fold[0]][target],
+                eval_set=[
+                    (train_set.loc[fold[0]][features], train_set.loc[fold[0]][target]),
+                    (train_set.loc[fold[1]][features], train_set.loc[fold[1]][target]),
+                ],
+                verbose=False,
+            )
+
+            # Predict for data used for training (yields high overfit) and for
+            # validation data
+            for i,part in enumerate(['train','val']):
+                predicts.loc[fold[i],part] = classifier.predict_proba(
+                    train_set.loc[fold[i]][features]
+                )[:, model.dp.proba_class_index]
+
+        # At this point, the predict dataframe looks like:
+        # | index | train | val |
+        # -----------------------
+        # |   0   | 0.8   | 0.7 |
+        # |   1   | 0.2   | 0.3 |
+        #
+        # train column contains predicts for train data
+        # val column contains predicts for validation data
+        #
+        # Now lets get our 2 metrics. We'll compute AUC for train data
+        # (should be pretty high) and AUC for validation data.
+        #
+        # Metric 1 (we want to maximize this): AUC_val
+        # Metric 2 is the difference between AUC_train and AUC_val (we want
+        # to minimize this, to detect overfit): AUC_train - AUC_val
+
+        # Area Under ROC Curve (AUC) is computed between known true targets
+        # predicted values. So compute it once for the train data and once
+        # for validation data
+        AUC_val = sklearn.metrics.roc_auc_score(
+            train_set[target],
+            predicts.val
         )
 
-        # Remove extra spaces and \n
-        text = ' '.join(text.split())
+        AUC_train = sklearn.metrics.roc_auc_score(
+            train_set[target],
+            predicts.train
+        )
 
-        return text
+        return AUC_val, (AUC_train - AUC_val)
 
 
 
     def hyperparam_optimize(self, model):
-        import sklearn
-
-        def objective(trial, model):
-            """
-            Your DataProvider must have something like:
-
-                estimator_hyperparam_search_space = dict(
-                    iterations              = ('int',        dict(low=10,    high=500)),
-                    depth                   = ('int',        dict(low=1,     high=9)),
-                    border_count            = ('int',        dict(low=1,     high=255)),
-                    l2_leaf_reg             = ('int',        dict(low=2,     high=35)),
-                    learning_rate           = ('loguniform', dict(low=0.01,  high=1.0)),
-                    random_strength         = ('loguniform', dict(low=1e-9,  high=10)),
-                    bagging_temperature     = ('float',      dict(low=0.0,   high=1.0)),
-                    scale_pos_weight        = ('uniform',    dict(low=0.01,  high=1.0))
-                )
-
-            This will be converted and used to optimize an estimator.
-            """
-            datasets     = model.sets
-            features     = model.dp.get_estimator_features_list()
-            target       = model.dp.get_target()
-            search_space = model.dp.get_estimator_optimization_search_space()
-
-            suggested_hyperparams = {
-                # Convert the DataProvider.estimator_hyperparam_search_space
-                # dict into Optuna´s trial.suggest_*() calls
-                p: getattr(trial,'suggest_' + search_space[p][0])(
-                    p,
-                    **search_space[p][1]
-                )
-                for p in search_space
-            }
-
-            skf = sklearn.model_selection.StratifiedKFold(
-                n_splits=self.bagging_size,
-                shuffle=True,
-                random_state=self.random_state,
-            )
-
-            predicts=pandas.DataFrame(index=datasets['train'].index).assign(proba=None)
-            for (itrain,ival) in skf.split(
-                        datasets['train'],
-                        datasets['train'].stratify
-                    ):
-
-                # self.log('All params: ' + str(dict(
-                #     random_state=self.random_state,
-                #     **self.params,
-                #     **suggested_hyperparams
-                # )))
-
-                classifier = xgboost.XGBClassifier(
-                    random_state=self.random_state,
-                    **self.params,
-                    **suggested_hyperparams
-                )
-
-                # self.log(datasets['train'].iloc[itrain].head(10).to_markdown())
-
-                classifier.fit(
-                    X=datasets['train'].iloc[itrain][features],
-                    y=datasets['train'].iloc[itrain][target],
-                    eval_set=[
-                        (datasets['train'].iloc[itrain][features], datasets['train'].iloc[itrain][target]),
-                        (datasets['train'].iloc[ival][features],   datasets['train'].iloc[ival][target]),
-                    ]
-                )
-
-                # Cirurgically set predicts in current ival rows
-                predicts.proba.iloc[ival] = classifier.predict_proba(
-                    datasets['train'].iloc[ival][features]
-                )[:, model.dp.proba_class_index]
-
-
-            return sklearn.metrics.roc_auc_score(
-                datasets['train'][target],
-                predicts.proba
-            )
-
-
-        optimizer=optuna.create_study(
-            study_name='Xingu generic XGBoostClassifier optimizer',
-            direction='maximize'
+        template = dict(
+            plot      = "{dp} • {full_train_id} • global • Pareto-front.html",
+            optimizer = "{dp} • {full_train_id} • optimizer.pkl",
+            db        = "{dp} • {full_train_id} • optimizer.db",
         )
 
-        optimizer.optimize(lambda trial: objective(trial,model), n_trials=self.optimization_trials)
+        skf = sklearn.model_selection.StratifiedKFold(
+            n_splits=self.bagging_size,
+            shuffle=True,
+            random_state=self.random_state,
+        )
 
-        # for i in range(20):
-        #     ntrials = len(optimizer.trials)
-        #     optimizer.optimize(objective, n_trials=min(500-ntrials,50))
+        # Shortcut
+        train_set = model.sets['train']
 
-        # Convert the OrderedDict returned by these objects into a plain dict
-        # return {i[0]:i[1] for i in optimizer.best_params_.items()}
-        return optimizer.best_trial.params
+        # Dedice which columns we'll use to stratify
+        stratify_col = 'stratify'
+        if stratify_col not in train_set.columns:
+            stratify_col = model.dp.get_target()
+
+        # Convert the sequential index returned by StratifiedKFold into
+        # our data actual index. Result is the folds array of size bagging_size
+        # where each element is a tuple of size 2: indexes for train and
+        # indexes for validation
+        folds = list()
+        for (seq_train, seq_val) in skf.split(
+                    numpy.zeros(len(train_set)), train_set[[stratify_col]]
+                ):
+            folds.append(
+                (
+                    train_set.iloc[seq_train].index,
+                    train_set.iloc[seq_val  ].index,
+                )
+            )
+
+        optimizer = optuna.create_study(
+            study_name = 'Xingu optimizer for XGBoostClassifier',
+            directions = ["minimize", "minimize"],
+            storage    = "sqlite:///" + str(
+                pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
+                template['db'].format(
+                    dp=model.dp.id,
+                    full_train_id=model.get_full_train_id(),
+                )
+            )
+        )
+        optimizer.set_metric_names(["Validation AUC", "Overfit detector"])
+
+        # Now we are going to optimize and watch the optimizer working through
+        # its pareto-front plot
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            optimizer_future = executor.submit(
+                # Function to call
+                optimizer.optimize,
+
+                # Parameters
+                lambda trial: self.objective(trial, model, folds),
+                n_trials=self.optimization_trials
+            )
+
+            # Now wait for the optimizer to end or a timeout happens
+            while True:
+                done_undone = concurrent.futures.wait(
+                    [optimizer_future],
+                    timeout=self.optimization_report_interval
+                )
+
+                # Write the Pareto-front interactive plot
+                optuna.visualization.plot_pareto_front(optimizer).write_html(
+                    pathlib.Path(model.get_config('PLOTS_PATH', default='.')) /
+                    template['plot'].format(
+                        dp=model.dp.id,
+                        full_train_id=model.get_full_train_id(),
+                    )
+                )
+
+                # Dump the optimizer
+                pkl=open(
+                    pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
+                    template['optimizer'].format(
+                        dp=model.dp.id,
+                        full_train_id=model.get_full_train_id(),
+                    ),
+                    'wb'
+                )
+                pickle.dump(optimizer, pkl)
+                pkl.close()
+
+                if len(done_undone.done):
+                    break
+
+        return optimizer.best_trials[0].params
 
 
 
@@ -160,7 +253,8 @@ class XinguXGBoostClassifier(xingu.Estimator):
             eval_set=[
                 (data.iloc[itrain][features], data.iloc[itrain][target]),
                 (data.iloc[ival][features],   data.iloc[ival][target]),
-            ]
+            ],
+            verbose=False,
         )
 
         return clf
@@ -191,7 +285,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
                     datasets['train'],
                     datasets['train'].stratify
                 ):
-            
+
             self.log(f'Trigger parallel train of XGBoost estimator #{index+1} of {self.bagging_size}...')
 
             tasks.append(
@@ -206,7 +300,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
                     target,
                 )
             )
-            
+
             index += 1
 
         self.log(f'Waiting for all member training to finish in parallel')
@@ -326,7 +420,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
         If method is 'predict_proba' all class probabilities are returned in multiple
         columns called estimation_class_{I}. Unless class_index is passed, then only
         that class is returned.
-        
+
         Resulting dataframe has columns:
 
         - index
@@ -335,16 +429,16 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
         This method was designed to be parallelized with concurrent.futures.
         """
-        
+
         self.log(f'Member #{bagging_member} is predicting for {data.shape[0]} datapoints...',level=logging.DEBUG)
-        
+
         def ddebug(table,message):
             self.log(message,level=logging.DEBUG)
             return table
-        
+
         renamer=lambda col: 'estimation'
         unwanted_classes=list()
-        
+
         if method == 'predict_proba':
             if class_index is not None:
                 # Want single value, not probabilities of all classes
@@ -352,29 +446,29 @@ class XinguXGBoostClassifier(xingu.Estimator):
             else:
                 # Change strategy for column renamer
                 renamer=lambda col: f'estimation_class_{col}'
-        
+
         return (
             pandas.DataFrame(
                 index=data.index,
-                
+
                 # Compute estimation via predict or predict_proba, using 1 member
                 data=getattr(self.bagging_members[bagging_member], method)(data)
             )
-            
+
             # Keep only the class_index class, if provided
             .drop(columns=unwanted_classes)
-            
+
             # Rename columns from 0, 1, etc to estimation (if predict) or estimation_class_{I}
             .rename(columns=renamer)
-            
+
             # Tag it with member ID
             .assign(member=bagging_member)
-            
+
             # Reduce RAM usage
             .assign(
                 member=lambda table: table.member.astype('category')
             )
-            
+
             .pipe(lambda table: ddebug(table,f'Member #{bagging_member} finished predicting for {data.shape[0]} datapoints.'))
         )
 
@@ -451,3 +545,23 @@ class XinguXGBoostClassifier(xingu.Estimator):
     def is_classifier(self):
         from sklearn.base import is_classifier
         return is_classifier(self.bagging_members[0])
+
+
+
+    def __repr__(self):
+        template='{klass}(size={size}, random_state={random_state}, members={members})'
+
+        text = template.format(
+            klass          = type(self).__name__,
+            size           = self.bagging_size,
+            random_state   = self.random_state,
+            members        = self.bagging_members
+        )
+
+        # Remove extra spaces and \n
+        text = ' '.join(text.split())
+
+        return text
+
+
+
