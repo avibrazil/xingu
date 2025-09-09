@@ -61,16 +61,17 @@ class DPTitanicSurvivor(xingu.DataProvider):
 
     ## XGBoost with Optuna...
     estimator_class_params = dict(
-        # Number of cross validation splits and number of XGBoosts that will be trained
+        # Number of cross validation splits and number of XGBoosts that will
+        # be trained
         bagging_size            = 3,
 
-        # Time interval in seconds on which the optimizer incomplete pareto-front
-        # graph will be saved
-        report_interval         = 30,
+        # Time interval in seconds on which the optimizer incomplete
+        # pareto-front graph will be saved
+        optimization_report_interval         = 30,
 
         # Number of optimization interations. Each interation
         # trains {bagging_size} XGBoosts
-        optimization_trials     = 5,
+        optimization_trials     = 2500,
 
         # Maximum optimization time in seconds
         optimization_timeout    = 5*3600,
