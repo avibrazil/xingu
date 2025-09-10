@@ -90,7 +90,6 @@ class DPTitanicSurvivor(xingu.DataProvider):
         objective               = 'binary:logistic',
         eval_metric             = 'logloss',
         missing                 = numpy.nan,
-        verbose                 = False,
         device                  = 'cuda',
     )
 
@@ -110,19 +109,19 @@ class DPTitanicSurvivor(xingu.DataProvider):
         }
     )
 
-    # Parameters computed from an optimization optuna's genetic algorithms
-    # [Validation_AUC, Train_AUC-Validation-AUC] = [0.863929889298893, 0.006449178128144939]
-    estimator_hyperparams = dict(
-        alpha            = 9.646828530085509,
-        colsample_bytree = 5,
-        gamma            = 9.652085454387114,
-        lambda           = 5.244338280711388,
-        learning_rate    = 0.025889435953364674,
-        max_depth        = 4,
-        min_child_weight = 4,
-        n_estimators     = 11,
-        subsample        = 0,
-    )
+    # Metrics of trial 2161 attained by hyperparameters:
+    # {'Validation AUC': 0.8675947668567594, 'Overfit detector': 0.017611539751761107}
+    estimator_hyperparams = {
+        'n_estimators': 34,
+        'alpha': 0.3344354775292634,
+        'gamma': 0.9643046591131509,
+        'colsample_bytree': 1.0,
+        'subsample': 1.0,
+        'learning_rate': 0.04431783778996737,
+        'max_depth': 3,
+        'min_child_weight': 1,
+        'lambda': 3.966338202637738
+    }
 
     # Data need to be downloaded manually from https://www.kaggle.com/competitions/titanic/data
     train_dataset_sources = dict(

@@ -177,7 +177,7 @@ def prepare_args():
     parser.add_argument(
         '--trained-models-path',
         dest='TRAINED_MODELS_PATH',
-        default=ConfigManager().get('TRAINED_MODELS_PATH',default=None),
+        default=ConfigManager().get('TRAINED_MODELS_PATH',default='.'),
         help=(
             'A local folder or an S3 path to dump trained models’ pickles. '
             'Example: «s3://mlops-data/sample-dvc/teste-do-avi/avm-trained-models». '
@@ -188,7 +188,7 @@ def prepare_args():
     parser.add_argument(
         '--plots-path',
         dest='PLOTS_PATH',
-        default=ConfigManager().get('PLOTS_PATH',default=None),
+        default=ConfigManager().get('PLOTS_PATH',default='.'),
         help=(
             'A local folder or an S3 path to save plots. Overwrites PLOTS_PATH '
             'env.'

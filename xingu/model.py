@@ -1699,18 +1699,23 @@ class Model(object):
             target=urllib.parse.unquote(target.as_uri())
 
         self.log(
-            'Serialized trained model object to {target}'.format(
+            'Serializing trained model object to {target}'.format(
                 target=target
             )
         )
 
+        self.log('Smart Open...')
         import smart_open
+        self.log('Registering compressor')
 
         smart_open.register_compressor('.xz', Model._handle_xz)
+        self.log('Registered compressor')
 
         # Write to object storage or maybe filesystem
         with smart_open.open(target, mode="wb") as f:
             pickle.dump(self, f, pickle.HIGHEST_PROTOCOL)
+            self.log('Model pickle saved')
+
 
         if dvc_resolved_path:
             # DVC always, ALWAYS, works locally
