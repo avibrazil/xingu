@@ -177,8 +177,8 @@ class XinguXGBoostClassifier(xingu.Estimator):
             )
 
         optimizer = optuna.create_study(
-            study_name = 'Xingu optimizer for XGBoostClassifier',
-            directions = ["minimize", "minimize"],
+            study_name = model.get_full_train_id(),
+            directions = ["maximize", "minimize"],
             storage    = "sqlite:///" + str(
                 pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
                 template['db'].format(

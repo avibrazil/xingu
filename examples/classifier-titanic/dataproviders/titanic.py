@@ -59,29 +59,38 @@ class DPTitanicSurvivor(xingu.DataProvider):
 
     estimator_class = xingu.estimators.xgboost_optuna.XinguXGBoostClassifier
 
-    ## XGBoost with Optuna...
+    # XGBoost with Optuna: parameters for
+    # xingu.estimators.xgboost_optuna.XinguXGBoostClassifier class....
+    # This is an ensamble of 3 XGBoosts; the optimizer will try 2500 different
+    # combinations of hyperparameters or run for maximum of 5 hours
     estimator_class_params = dict(
-        # Number of cross validation splits and number of XGBoosts that will be trained
-        bagging_size            = 3,
-
-        # Time interval in seconds on which the optimizer incomplete pareto-front
-        # graph will be saved
-        report_interval         = 30,
+        # Number of cross validation splits and number of XGBoosts that will
+        # be trained
+        bagging_size                  = 3,
 
         # Number of optimization interations. Each interation
         # trains {bagging_size} XGBoosts
-        optimization_trials     = 5,
+        optimization_trials           = 2500,
 
         # Maximum optimization time in seconds
-        optimization_timeout    = 5*3600,
+        optimization_timeout          = 5*3600,
+
+        # Time interval in seconds on which the optimizer incomplete
+        # pareto-front graph will be saved
+        optimization_report_interval  = 30,
     )
 
     # XGBoost initialization parameters
+    # Notice we are optimizing hyperparameters (and training) using NVidia
+    # Cuda (GPU), which performs 10 times faster than CPU.
+    # If you optimize hyperparameters with GPU, you have to train your model
+    # with GPU too.
     estimator_params = dict(
         n_jobs                  = -1,
         objective               = 'binary:logistic',
         eval_metric             = 'logloss',
         missing                 = numpy.nan,
+        verbose                 = False,
         device                  = 'cuda',
     )
 
@@ -103,17 +112,17 @@ class DPTitanicSurvivor(xingu.DataProvider):
 
     # Parameters computed from an optimization optuna's genetic algorithms
     # [Validation_AUC, Train_AUC-Validation-AUC] = [0.863929889298893, 0.006449178128144939]
-    estimator_hyperparams = {
-        'n_estimators': 18,
-        'alpha': 0.6976961980825642,
-        'gamma': 0.5000088656846183,
-        'colsample_bytree': 0.8,
-        'subsample': 1.0,
-        'learning_rate': 0.03708621167071816,
-        'max_depth': 3,
-        'min_child_weight': 2,
-        'lambda': 4.920621243793648
-    }
+    estimator_hyperparams = dict(
+        alpha            = 9.646828530085509,
+        colsample_bytree = 5,
+        gamma            = 9.652085454387114,
+        lambda           = 5.244338280711388,
+        learning_rate    = 0.025889435953364674,
+        max_depth        = 4,
+        min_child_weight = 4,
+        n_estimators     = 11,
+        subsample        = 0,
+    )
 
     # Data need to be downloaded manually from https://www.kaggle.com/competitions/titanic/data
     train_dataset_sources = dict(
