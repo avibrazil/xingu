@@ -274,109 +274,109 @@ class DPTitanicSurvivor(xingu.DataProvider):
         }
 
 
-    def post_process_after_hyperparam_optimize(self, model):
-        """
-        Chamado múltiplas vezes durante a otimização de hyperparâmetros e
-        também logo após o fim da otimização. Este método faz 2 coisas:
+    # def post_process_after_hyperparam_optimize(self, model):
+    #     """
+    #     Chamado múltiplas vezes durante a otimização de hyperparâmetros e
+    #     também logo após o fim da otimização. Este método faz 2 coisas:
 
-        - Salva gráfico Pareto-front em formato HTML+Plotly (https://optuna.readthedocs.io/en/stable/reference/visualization/generated/optuna.visualization.plot_pareto_front.html)
-        - Salva PKL do objeto xingu.xgboost_optuna.XinguXGBoostClassifier.optimizer
+    #     - Salva gráfico Pareto-front em formato HTML+Plotly (https://optuna.readthedocs.io/en/stable/reference/visualization/generated/optuna.visualization.plot_pareto_front.html)
+    #     - Salva PKL do objeto xingu.xgboost_optuna.XinguXGBoostClassifier.optimizer
 
-        Caso o treino já tenha finalizado, os nomes dos arquivos conterão data
-        e hora do fim do treino e serão apagados os arquivos intermediários
-        anteriores.
-        """
-        plot_template_incomplete      = "{dp} • {full_train_id} • global • Pareto-front.html"
-        plot_template                 = "{dp} • {time} • {full_train_id} • global • Pareto-front.html"
-        optimizer_template_incomplete = '{dp} • {full_train_id} • optimizer.pkl'
-        optimizer_template            = '{dp} • {time} • {full_train_id} • optimizer.pkl'
+    #     Caso o treino já tenha finalizado, os nomes dos arquivos conterão data
+    #     e hora do fim do treino e serão apagados os arquivos intermediários
+    #     anteriores.
+    #     """
+    #     plot_template_incomplete      = "{dp} • {full_train_id} • global • Pareto-front.html"
+    #     plot_template                 = "{dp} • {time} • {full_train_id} • global • Pareto-front.html"
+    #     optimizer_template_incomplete = '{dp} • {full_train_id} • optimizer.pkl'
+    #     optimizer_template            = '{dp} • {time} • {full_train_id} • optimizer.pkl'
 
-        if hasattr(model.estimator,'optimizer_pareto_front'):
-            has_time = type(model.trained) is datetime.datetime
-            if has_time:
-                # Train has finished; set final template and remove transient file
-                tpl = plot_template
+    #     if hasattr(model.estimator,'optimizer_pareto_front'):
+    #         has_time = type(model.trained) is datetime.datetime
+    #         if has_time:
+    #             # Train has finished; set final template and remove transient file
+    #             tpl = plot_template
 
-                (
-                    pathlib.Path(model.get_config('PLOTS_PATH', default='.')) /
-                    plot_template_incomplete.format(
-                        dp=self.id,
-                        full_train_id=model.get_full_train_id(),
-                    )
-                ).unlink(missing_ok=True)
-            else:
-                # Unfinished train; use a template without train time
-                tpl = plot_template_incomplete
+    #             (
+    #                 pathlib.Path(model.get_config('PLOTS_PATH', default='.')) /
+    #                 plot_template_incomplete.format(
+    #                     dp=self.id,
+    #                     full_train_id=model.get_full_train_id(),
+    #                 )
+    #             ).unlink(missing_ok=True)
+    #         else:
+    #             # Unfinished train; use a template without train time
+    #             tpl = plot_template_incomplete
 
-            # Write transient or final file
-            model.estimator.optimizer_pareto_front.write_html(
-                pathlib.Path(model.get_config('PLOTS_PATH', default='.')) /
-                tpl.format(
-                    dp=self.id,
-                    full_train_id=model.get_full_train_id(),
-                    time=(
-                        type(model).time_fs_str(model.trained)
-                        if has_time
-                        else datetime.datetime.now()
-                    ),
-                )
-            )
+    #         # Write transient or final file
+    #         model.estimator.optimizer_pareto_front.write_html(
+    #             pathlib.Path(model.get_config('PLOTS_PATH', default='.')) /
+    #             tpl.format(
+    #                 dp=self.id,
+    #                 full_train_id=model.get_full_train_id(),
+    #                 time=(
+    #                     type(model).time_fs_str(model.trained)
+    #                     if has_time
+    #                     else datetime.datetime.now()
+    #                 ),
+    #             )
+    #         )
 
-        if hasattr(model.estimator,'optimizer'):
-            has_time = type(model.trained) is datetime.datetime
-            if has_time:
-                # Train has finished; set final template and remove transient file
-                tpl=optimizer_template
+    #     if hasattr(model.estimator,'optimizer'):
+    #         has_time = type(model.trained) is datetime.datetime
+    #         if has_time:
+    #             # Train has finished; set final template and remove transient file
+    #             tpl=optimizer_template
 
-                (
-                    pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
-                    optimizer_template_incomplete.format(
-                        dp=self.id,
-                        full_train_id=model.get_full_train_id(),
-                    )
-                ).unlink(missing_ok=True)
-            else:
-                # Unfinished train; use a template without train time
-                tpl=optimizer_template_incomplete
+    #             (
+    #                 pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
+    #                 optimizer_template_incomplete.format(
+    #                     dp=self.id,
+    #                     full_train_id=model.get_full_train_id(),
+    #                 )
+    #             ).unlink(missing_ok=True)
+    #         else:
+    #             # Unfinished train; use a template without train time
+    #             tpl=optimizer_template_incomplete
 
-            pkl=open(
-                pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
-                tpl.format(
-                    dp=self.id,
-                    full_train_id=model.get_full_train_id(),
-                    time=(
-                        type(model).time_fs_str(model.trained)
-                        if has_time
-                        else datetime.datetime.now()
-                    ),
-                ),
-                'wb'
-            )
-            try:
-                pickle.dump(model.estimator.optimizer, pkl)
-            except RuntimeError:
-                # A "RuntimeError: dictionary changed size during iteration"
-                # might happen here because the model.estimator.optimizer
-                # object is still alive and hot in the background. Simply
-                # ignore it, tell user and try again on next iteration.
-                self.log(
-                    level=logging.WARNING,
-                    message="Optimizer has changed in the background. Will try again on next cycle"
-                )
-            pkl.close()
+    #         pkl=open(
+    #             pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
+    #             tpl.format(
+    #                 dp=self.id,
+    #                 full_train_id=model.get_full_train_id(),
+    #                 time=(
+    #                     type(model).time_fs_str(model.trained)
+    #                     if has_time
+    #                     else datetime.datetime.now()
+    #                 ),
+    #             ),
+    #             'wb'
+    #         )
+    #         try:
+    #             pickle.dump(model.estimator.optimizer, pkl)
+    #         except RuntimeError:
+    #             # A "RuntimeError: dictionary changed size during iteration"
+    #             # might happen here because the model.estimator.optimizer
+    #             # object is still alive and hot in the background. Simply
+    #             # ignore it, tell user and try again on next iteration.
+    #             self.log(
+    #                 level=logging.WARNING,
+    #                 message="Optimizer has changed in the background. Will try again on next cycle"
+    #             )
+    #         pkl.close()
 
 
 
-    def post_process_after_train(self, model):
-        """
-        Chamado logo após o fim do treino, este método
-        faz 2 coisas:
+    # def post_process_after_train(self, model):
+    #     """
+    #     Chamado logo após o fim do treino, este método
+    #     faz 2 coisas:
 
-        - Salva gráfico Pareto-front em formato HTML+Plotly (https://optuna.readthedocs.io/en/stable/reference/visualization/generated/optuna.visualization.plot_pareto_front.html)
-        - Salva PKL do objeto xingu.xgboost_optuna.XinguXGBoostClassifier.optimizer
-        - TODO: Calcula segmentos de score
-        """
-        self.post_process_after_hyperparam_optimize(model)
+    #     - Salva gráfico Pareto-front em formato HTML+Plotly (https://optuna.readthedocs.io/en/stable/reference/visualization/generated/optuna.visualization.plot_pareto_front.html)
+    #     - Salva PKL do objeto xingu.xgboost_optuna.XinguXGBoostClassifier.optimizer
+    #     - TODO: Calcula segmentos de score
+    #     """
+    #     self.post_process_after_hyperparam_optimize(model)
 
 
 

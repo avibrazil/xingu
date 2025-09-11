@@ -356,7 +356,7 @@ def prepare_args():
             'The inventory.yaml file will be updated at the end of train '
             'session. This flag controls weather it should be also commited to '
             'Git’s current branch and pushed to remote repo. Overwrites '
-            'COMMIT_CURRENTS env.'
+            'COMMIT_INVENTORY env.'
         )
     )
 

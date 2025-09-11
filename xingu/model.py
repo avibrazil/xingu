@@ -673,7 +673,7 @@ class Model(object):
 
         for part in self.sets.keys():
             if part not in self.sets_estimations:
-                # If already not prodicted (e.g. 'validation')
+                # If already not predicted (e.g. 'validation')
                 self.log(f'Predicting «{part}» part of the training dataset for metrics purposes')
 
                 if self.estimator is not None and self.estimator.is_classifier():

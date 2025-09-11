@@ -279,8 +279,10 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
 
 
-    def fit_single(self, data, itrain, ival, features, target) -> xgboost.XGBClassifier:
-        import sklearn
+    def fit_single(self, model, fold) -> xgboost.XGBClassifier:
+        features     = model.dp.get_estimator_features_list()
+        target       = model.dp.get_target()
+        train_set    = model.sets['train']
 
         clf = xgboost.XGBClassifier(
             random_state=self.random_state,
@@ -291,13 +293,12 @@ class XinguXGBoostClassifier(xingu.Estimator):
         # Actual training session begins
 
         clf.fit(
-            X=data.iloc[itrain][features],
-            y=data.iloc[itrain][target],
+            X=train_set.loc[fold[0]][features],
+            y=train_set.loc[fold[0]][target],
             eval_set=[
-                (data.iloc[itrain][features], data.iloc[itrain][target]),
-                (data.iloc[ival][features],   data.iloc[ival][target]),
+                (train_set.loc[fold[1]][features],   train_set.loc[fold[1]][target]),
             ],
-            verbose=False,
+            verbose=True,
         )
 
         return clf
@@ -305,7 +306,6 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
 
     def fit(self, datasets, features, target, model):
-        import sklearn
         # Add attribute 'max_workers=1' to inhibit parallelism
 
         max_workers=decouple.config('PARALLEL_ESTIMATORS_MAX_WORKERS', default=0, cast=int)
@@ -315,36 +315,22 @@ class XinguXGBoostClassifier(xingu.Estimator):
         else:
             self.logger.info(f'{max_workers} parallel estimators to train')
 
-        skf = sklearn.model_selection.StratifiedKFold(
-            n_splits=self.bagging_size,
-            shuffle=True,
-            random_state=self.random_state,
-        )
+        # Split data in {self.bagging_size} parts
+        folds = self.get_train_folds_indexes(model)
 
-        executor=concurrent.futures.ThreadPoolExecutor(thread_name_prefix='fit', max_workers=max_workers)
-        tasks=[]
-        index=0
-        for (itrain,ival) in skf.split(
-                    datasets['train'],
-                    datasets['train'].stratify
-                ):
-
-            self.log(f'Trigger parallel train of XGBoost estimator #{index+1} of {self.bagging_size}...')
-
-            tasks.append(
-                executor.submit(
-                    # Method name to call asynchronously
-                    self.fit_single,
-                    # Its parameters
-                    datasets['train'],
-                    itrain,
-                    ival,
-                    features,
-                    target,
+        tasks=list()
+        with concurrent.futures.ThreadPoolExecutor(thread_name_prefix='fit', max_workers=max_workers) as executor:
+            index=0
+            for fold in folds:
+                index=index+1
+                self.log(f'Trigger parallel train of XGBoost estimator #{index} of {self.bagging_size}...')
+                tasks.append(
+                    executor.submit(
+                        self.fit_single,
+                        model,
+                        fold
+                    )
                 )
-            )
-
-            index += 1
 
         self.log(f'Waiting for all member training to finish in parallel')
 
@@ -385,7 +371,7 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
         duplicate_index_error_message=[
             'DataFrame index has duplicates, which will lead',
-            'to sever inconsistencies in multi-model sumarization.',
+            'to severe inconsistencies in multi-model sumarization.',
             'Here is a sample of problematic IDs; clean',
             'DataFrame appropriatelly: {}'
         ]
@@ -560,12 +546,22 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
         # Process their resulting DataFrame as soon as it is available
         for task in concurrent.futures.as_completed(tasks):
-            if estimation is None:
-                estimation=task.result()
+            e=task.exception()
+            if e is None:
+                # No exception
+                if estimation is None:
+                    estimation=task.result()
+                else:
+                    estimation=pandas.concat([estimation,task.result()])
             else:
-                estimation=pandas.concat([estimation,task.result()])
+                self.logger.critical('Exception ocurred in predict_single() task of one of the member estimators. Forcing a shutdown in post-process task.')
+                raise e
 
-        return estimation.set_index([estimation.index,'member']).sort_index()
+        estimation=estimation.set_index([estimation.index,'member']).sort_index()
+
+        self.logger.debug("Sample estimation:\n" + estimation.head(5).to_markdown())
+
+        return estimation
 
 
 
