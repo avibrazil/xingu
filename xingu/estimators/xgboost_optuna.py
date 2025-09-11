@@ -1,4 +1,6 @@
 import os
+import time
+import datetime
 import pathlib
 import logging
 import pickle
@@ -18,6 +20,11 @@ class XinguXGBoostClassifier(xingu.Estimator):
     Multi-XGBoost implementation of a classifier optimized by Optuna.
     """
 
+    # Order do matter and must match what objective function returns
+    optimizer_metric_direction = {
+        "Validation AUC" :    "maximize",
+        "Overfit detector":   "minimize"
+    }
 
     def __init__(self,
                          params: dict=None,
@@ -140,21 +147,15 @@ class XinguXGBoostClassifier(xingu.Estimator):
 
 
 
-    def hyperparam_optimize(self, model):
-        template = dict(
-            plot      = "{dp} • {full_train_id} • global • Pareto-front.html",
-            optimizer = "{dp} • {full_train_id} • optimizer.pkl",
-            db        = "{dp} • {full_train_id} • optimizer.db",
-        )
+    def get_train_folds_indexes(self, model):
+        # Shortcut
+        train_set = model.sets['train']
 
         skf = sklearn.model_selection.StratifiedKFold(
             n_splits=self.bagging_size,
             shuffle=True,
             random_state=self.random_state,
         )
-
-        # Shortcut
-        train_set = model.sets['train']
 
         # Dedice which columns we'll use to stratify
         stratify_col = 'stratify'
@@ -176,9 +177,23 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 )
             )
 
+        return folds
+
+
+
+    def hyperparam_optimize(self, model):
+        template = dict(
+            plot      = "{dp} • {full_train_id} • global • Pareto-front.html",
+            optimizer = "{dp} • {full_train_id} • optimizer.pkl",
+            db        = "{dp} • {full_train_id} • optimizer.db",
+        )
+
+        # Optuna can be very annoying...
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
         optimizer = optuna.create_study(
             study_name = model.get_full_train_id(),
-            directions = ["maximize", "minimize"],
+            directions = list(self.optimizer_metric_direction.values()),
             storage    = "sqlite:///" + str(
                 pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
                 template['db'].format(
@@ -187,24 +202,29 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 )
             )
         )
-        optimizer.set_metric_names(["Validation AUC", "Overfit detector"])
+
+        optimizer.set_metric_names(list(self.optimizer_metric_direction.keys()))
+
+        # Split data in {self.bagging_size} parts
+        folds = self.get_train_folds_indexes(model)
 
         # Now we are going to optimize and watch the optimizer working through
         # its pareto-front plot
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            optimizer_future = executor.submit(
+            optimizer_task = executor.submit(
                 # Function to call
                 optimizer.optimize,
 
                 # Parameters
-                lambda trial: self.objective(trial, model, folds),
-                n_trials=self.optimization_trials
+                func       = lambda trial: self.objective(trial, model, folds),
+                n_trials   = self.optimization_trials,
+                timeout    = self.optimization_timeout,
             )
 
             # Now wait for the optimizer to end or a timeout happens
             while True:
                 done_undone = concurrent.futures.wait(
-                    [optimizer_future],
+                    [optimizer_task],
                     timeout=self.optimization_report_interval
                 )
 
@@ -228,6 +248,29 @@ class XinguXGBoostClassifier(xingu.Estimator):
                 )
                 pickle.dump(optimizer, pkl)
                 pkl.close()
+
+                # Some ETA report
+                time_format="📅%Y-%m-%d ⏰%H:%M:%S %z"
+                tz=datetime.timezone(-datetime.timedelta(seconds=time.timezone))
+                trials=optimizer.trials_dataframe()
+                start=trials.datetime_start.min().tz_localize(tz)
+                duration_avg=trials.query("state=='COMPLETE'").duration.median().value
+                if duration_avg==0:
+                    duration_avg=1e-8 # Avoid division by zero
+                total=len(trials)
+
+                now=datetime.datetime.now(tz)
+                total_duration = datetime.timedelta(seconds=(self.optimization_trials-total)*(duration_avg/1_000_000_000))
+                ETA_complete=now + total_duration
+                ETA_timeout=start + datetime.timedelta(seconds=self.optimization_timeout)
+                total_by_timeout=int(((ETA_timeout-start).nanoseconds/duration_avg)/1_000_000_000)
+
+                if ETA_complete < ETA_timeout:
+                    ETA_report = f'All {self.optimization_trials} trials will finish circa {ETA_complete.strftime(time_format)}.'
+                else:
+                    ETA_report = f'Estimated {total_by_timeout} trials will be executed until {ETA_timeout.strftime(time_format)}.'
+
+                self.log(f"{total} trials of ±{round(duration_avg/1_000_000_000,3)}s each executed. {ETA_report}")
 
                 if len(done_undone.done):
                     break

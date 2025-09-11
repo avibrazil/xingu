@@ -76,8 +76,9 @@ class DPTitanicSurvivor(xingu.DataProvider):
         optimization_timeout          = 5*3600,
 
         # Time interval in seconds on which the optimizer incomplete
-        # pareto-front graph will be saved
-        optimization_report_interval  = 30,
+        # pareto-front graph will be saved and a small preliminary ETA
+        # report will be supplied
+        optimization_report_interval  = 20,
     )
 
     # XGBoost initialization parameters
