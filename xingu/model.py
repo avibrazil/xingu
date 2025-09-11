@@ -15,6 +15,7 @@ import json
 import concurrent.futures
 import pickle
 
+import smart_open
 import pandas
 
 from . import DataProvider
@@ -1703,10 +1704,6 @@ class Model(object):
                 target=target
             )
         )
-
-        self.log('Smart Open...')
-        import smart_open
-        self.log('Registering compressor')
 
         smart_open.register_compressor('.xz', Model._handle_xz)
         self.log('Registered compressor')
