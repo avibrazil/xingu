@@ -67,7 +67,7 @@ class ConfigManager(object, metaclass=Singleton):
 
         Here is a full example:
 
-        'postgresql+{% ROBSON_DB_PGSQL_DRIVER %}://{% AWS_PARAM:robson-avm-staging-user %}:{% AWS_SECRET:robson-avm-staging-rds-secret %}@{% AWS_PARAM:robson-avm-staging-url %}/{% AWS_PARAM:robson-avm-staging-database-name %}'
+        'postgresql+{% XINGU_DB_PGSQL_DRIVER %}://{% AWS_PARAM:xingu-user %}:{% AWS_SECRET:xingu-secret %}@{% AWS_PARAM:xingu-url %}/{% AWS_PARAM:xingu-database-name %}'
 
         Use spaces inside ‘{% %}’ to increase readability.
 

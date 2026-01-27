@@ -15,6 +15,7 @@ import json
 import concurrent.futures
 import pickle
 
+import smart_open
 import pandas
 
 from . import DataProvider
@@ -672,7 +673,7 @@ class Model(object):
 
         for part in self.sets.keys():
             if part not in self.sets_estimations:
-                # If already not prodicted (e.g. 'validation')
+                # If already not predicted (e.g. 'validation')
                 self.log(f'Predicting «{part}» part of the training dataset for metrics purposes')
 
                 if self.estimator is not None and self.estimator.is_classifier():
@@ -1699,18 +1700,19 @@ class Model(object):
             target=urllib.parse.unquote(target.as_uri())
 
         self.log(
-            'Serialized trained model object to {target}'.format(
+            'Serializing trained model object to {target}'.format(
                 target=target
             )
         )
 
-        import smart_open
-
         smart_open.register_compressor('.xz', Model._handle_xz)
+        self.log('Registered compressor')
 
         # Write to object storage or maybe filesystem
         with smart_open.open(target, mode="wb") as f:
             pickle.dump(self, f, pickle.HIGHEST_PROTOCOL)
+            self.log('Model pickle saved')
+
 
         if dvc_resolved_path:
             # DVC always, ALWAYS, works locally

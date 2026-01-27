@@ -379,7 +379,12 @@ class Coach:
                 ) as executor:
             tasks=[]
             while True:
-                # Block until a Model object is trained and ready to be used for post processing
+                # Block until a Model object is trained and ready to be used
+                # for post processing. Then fire following tasks:
+                # - Save model file
+                # - Save train/test datasets to DB
+                # - Compute and save metrics over train/test data
+                # - Predict the batch predict dataset and save metrics
                 model=self.post_train_queue.get()
                 self.post_train_queue.task_done()
 
@@ -431,7 +436,7 @@ class Coach:
                     # No exception
                     task.result()
                 else:
-                    self.logger.warning('Exception ocurred in team_train() tasks. Forcing a shutdown in post-process task.')
+                    self.logger.warning('Exception ocurred in post_train() tasks. Forcing a shutdown in post-process task.')
                     self.post_processing=False
                     self.post_train_queue.put(None, block=False)
                     self.logger.exception(e)

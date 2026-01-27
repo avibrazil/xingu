@@ -59,24 +59,33 @@ class DPTitanicSurvivor(xingu.DataProvider):
 
     estimator_class = xingu.estimators.xgboost_optuna.XinguXGBoostClassifier
 
-    ## XGBoost with Optuna...
+    # XGBoost with Optuna: parameters for
+    # xingu.estimators.xgboost_optuna.XinguXGBoostClassifier class....
+    # This is an ensamble of 3 XGBoosts; the optimizer will try 2500 different
+    # combinations of hyperparameters or run for maximum of 5 hours
     estimator_class_params = dict(
-        # Number of cross validation splits and number of XGBoosts that will be trained
-        bagging_size            = 3,
-
-        # Time interval in seconds on which the optimizer incomplete pareto-front
-        # graph will be saved
-        report_interval         = 30,
+        # Number of cross validation splits and number of XGBoosts that will
+        # be trained
+        bagging_size                  = 3,
 
         # Number of optimization interations. Each interation
         # trains {bagging_size} XGBoosts
-        optimization_trials     = 5,
+        optimization_trials           = 2500,
 
         # Maximum optimization time in seconds
-        optimization_timeout    = 5*3600,
+        optimization_timeout          = 5*3600,
+
+        # Time interval in seconds on which the optimizer incomplete
+        # pareto-front graph will be saved and a small preliminary ETA
+        # report will be supplied
+        optimization_report_interval  = 20,
     )
 
     # XGBoost initialization parameters
+    # Notice we are optimizing hyperparameters (and training) using NVidia
+    # Cuda (GPU), which performs 10 times faster than CPU.
+    # If you optimize hyperparameters with GPU, you have to train your model
+    # with GPU too.
     estimator_params = dict(
         n_jobs                  = -1,
         objective               = 'binary:logistic',
@@ -101,18 +110,18 @@ class DPTitanicSurvivor(xingu.DataProvider):
         }
     )
 
-    # Parameters computed from an optimization optuna's genetic algorithms
-    # [Validation_AUC, Train_AUC-Validation-AUC] = [0.863929889298893, 0.006449178128144939]
+    # Metrics of trial 2161 attained by hyperparameters:
+    # {'Validation AUC': 0.8675947668567594, 'Overfit detector': 0.017611539751761107}
     estimator_hyperparams = {
-        'n_estimators': 18,
-        'alpha': 0.6976961980825642,
-        'gamma': 0.5000088656846183,
-        'colsample_bytree': 0.8,
+        'n_estimators': 34,
+        'alpha': 0.3344354775292634,
+        'gamma': 0.9643046591131509,
+        'colsample_bytree': 1.0,
         'subsample': 1.0,
-        'learning_rate': 0.03708621167071816,
+        'learning_rate': 0.04431783778996737,
         'max_depth': 3,
-        'min_child_weight': 2,
-        'lambda': 4.920621243793648
+        'min_child_weight': 1,
+        'lambda': 3.966338202637738
     }
 
     # Data need to be downloaded manually from https://www.kaggle.com/competitions/titanic/data
@@ -265,109 +274,109 @@ class DPTitanicSurvivor(xingu.DataProvider):
         }
 
 
-    def post_process_after_hyperparam_optimize(self, model):
-        """
-        Chamado múltiplas vezes durante a otimização de hyperparâmetros e
-        também logo após o fim da otimização. Este método faz 2 coisas:
+    # def post_process_after_hyperparam_optimize(self, model):
+    #     """
+    #     Chamado múltiplas vezes durante a otimização de hyperparâmetros e
+    #     também logo após o fim da otimização. Este método faz 2 coisas:
 
-        - Salva gráfico Pareto-front em formato HTML+Plotly (https://optuna.readthedocs.io/en/stable/reference/visualization/generated/optuna.visualization.plot_pareto_front.html)
-        - Salva PKL do objeto xingu.xgboost_optuna.XinguXGBoostClassifier.optimizer
+    #     - Salva gráfico Pareto-front em formato HTML+Plotly (https://optuna.readthedocs.io/en/stable/reference/visualization/generated/optuna.visualization.plot_pareto_front.html)
+    #     - Salva PKL do objeto xingu.xgboost_optuna.XinguXGBoostClassifier.optimizer
 
-        Caso o treino já tenha finalizado, os nomes dos arquivos conterão data
-        e hora do fim do treino e serão apagados os arquivos intermediários
-        anteriores.
-        """
-        plot_template_incomplete      = "{dp} • {full_train_id} • global • Pareto-front.html"
-        plot_template                 = "{dp} • {time} • {full_train_id} • global • Pareto-front.html"
-        optimizer_template_incomplete = '{dp} • {full_train_id} • optimizer.pkl'
-        optimizer_template            = '{dp} • {time} • {full_train_id} • optimizer.pkl'
+    #     Caso o treino já tenha finalizado, os nomes dos arquivos conterão data
+    #     e hora do fim do treino e serão apagados os arquivos intermediários
+    #     anteriores.
+    #     """
+    #     plot_template_incomplete      = "{dp} • {full_train_id} • global • Pareto-front.html"
+    #     plot_template                 = "{dp} • {time} • {full_train_id} • global • Pareto-front.html"
+    #     optimizer_template_incomplete = '{dp} • {full_train_id} • optimizer.pkl'
+    #     optimizer_template            = '{dp} • {time} • {full_train_id} • optimizer.pkl'
 
-        if hasattr(model.estimator,'optimizer_pareto_front'):
-            has_time = type(model.trained) is datetime.datetime
-            if has_time:
-                # Train has finished; set final template and remove transient file
-                tpl = plot_template
+    #     if hasattr(model.estimator,'optimizer_pareto_front'):
+    #         has_time = type(model.trained) is datetime.datetime
+    #         if has_time:
+    #             # Train has finished; set final template and remove transient file
+    #             tpl = plot_template
 
-                (
-                    pathlib.Path(model.get_config('PLOTS_PATH', default='.')) /
-                    plot_template_incomplete.format(
-                        dp=self.id,
-                        full_train_id=model.get_full_train_id(),
-                    )
-                ).unlink(missing_ok=True)
-            else:
-                # Unfinished train; use a template without train time
-                tpl = plot_template_incomplete
+    #             (
+    #                 pathlib.Path(model.get_config('PLOTS_PATH', default='.')) /
+    #                 plot_template_incomplete.format(
+    #                     dp=self.id,
+    #                     full_train_id=model.get_full_train_id(),
+    #                 )
+    #             ).unlink(missing_ok=True)
+    #         else:
+    #             # Unfinished train; use a template without train time
+    #             tpl = plot_template_incomplete
 
-            # Write transient or final file
-            model.estimator.optimizer_pareto_front.write_html(
-                pathlib.Path(model.get_config('PLOTS_PATH', default='.')) /
-                tpl.format(
-                    dp=self.id,
-                    full_train_id=model.get_full_train_id(),
-                    time=(
-                        type(model).time_fs_str(model.trained)
-                        if has_time
-                        else datetime.datetime.now()
-                    ),
-                )
-            )
+    #         # Write transient or final file
+    #         model.estimator.optimizer_pareto_front.write_html(
+    #             pathlib.Path(model.get_config('PLOTS_PATH', default='.')) /
+    #             tpl.format(
+    #                 dp=self.id,
+    #                 full_train_id=model.get_full_train_id(),
+    #                 time=(
+    #                     type(model).time_fs_str(model.trained)
+    #                     if has_time
+    #                     else datetime.datetime.now()
+    #                 ),
+    #             )
+    #         )
 
-        if hasattr(model.estimator,'optimizer'):
-            has_time = type(model.trained) is datetime.datetime
-            if has_time:
-                # Train has finished; set final template and remove transient file
-                tpl=optimizer_template
+    #     if hasattr(model.estimator,'optimizer'):
+    #         has_time = type(model.trained) is datetime.datetime
+    #         if has_time:
+    #             # Train has finished; set final template and remove transient file
+    #             tpl=optimizer_template
 
-                (
-                    pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
-                    optimizer_template_incomplete.format(
-                        dp=self.id,
-                        full_train_id=model.get_full_train_id(),
-                    )
-                ).unlink(missing_ok=True)
-            else:
-                # Unfinished train; use a template without train time
-                tpl=optimizer_template_incomplete
+    #             (
+    #                 pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
+    #                 optimizer_template_incomplete.format(
+    #                     dp=self.id,
+    #                     full_train_id=model.get_full_train_id(),
+    #                 )
+    #             ).unlink(missing_ok=True)
+    #         else:
+    #             # Unfinished train; use a template without train time
+    #             tpl=optimizer_template_incomplete
 
-            pkl=open(
-                pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
-                tpl.format(
-                    dp=self.id,
-                    full_train_id=model.get_full_train_id(),
-                    time=(
-                        type(model).time_fs_str(model.trained)
-                        if has_time
-                        else datetime.datetime.now()
-                    ),
-                ),
-                'wb'
-            )
-            try:
-                pickle.dump(model.estimator.optimizer, pkl)
-            except RuntimeError:
-                # A "RuntimeError: dictionary changed size during iteration"
-                # might happen here because the model.estimator.optimizer
-                # object is still alive and hot in the background. Simply
-                # ignore it, tell user and try again on next iteration.
-                self.log(
-                    level=logging.WARNING,
-                    message="Optimizer has changed in the background. Will try again on next cycle"
-                )
-            pkl.close()
+    #         pkl=open(
+    #             pathlib.Path(model.get_config('TRAINED_MODELS_PATH', default='.')) /
+    #             tpl.format(
+    #                 dp=self.id,
+    #                 full_train_id=model.get_full_train_id(),
+    #                 time=(
+    #                     type(model).time_fs_str(model.trained)
+    #                     if has_time
+    #                     else datetime.datetime.now()
+    #                 ),
+    #             ),
+    #             'wb'
+    #         )
+    #         try:
+    #             pickle.dump(model.estimator.optimizer, pkl)
+    #         except RuntimeError:
+    #             # A "RuntimeError: dictionary changed size during iteration"
+    #             # might happen here because the model.estimator.optimizer
+    #             # object is still alive and hot in the background. Simply
+    #             # ignore it, tell user and try again on next iteration.
+    #             self.log(
+    #                 level=logging.WARNING,
+    #                 message="Optimizer has changed in the background. Will try again on next cycle"
+    #             )
+    #         pkl.close()
 
 
 
-    def post_process_after_train(self, model):
-        """
-        Chamado logo após o fim do treino, este método
-        faz 2 coisas:
+    # def post_process_after_train(self, model):
+    #     """
+    #     Chamado logo após o fim do treino, este método
+    #     faz 2 coisas:
 
-        - Salva gráfico Pareto-front em formato HTML+Plotly (https://optuna.readthedocs.io/en/stable/reference/visualization/generated/optuna.visualization.plot_pareto_front.html)
-        - Salva PKL do objeto xingu.xgboost_optuna.XinguXGBoostClassifier.optimizer
-        - TODO: Calcula segmentos de score
-        """
-        self.post_process_after_hyperparam_optimize(model)
+    #     - Salva gráfico Pareto-front em formato HTML+Plotly (https://optuna.readthedocs.io/en/stable/reference/visualization/generated/optuna.visualization.plot_pareto_front.html)
+    #     - Salva PKL do objeto xingu.xgboost_optuna.XinguXGBoostClassifier.optimizer
+    #     - TODO: Calcula segmentos de score
+    #     """
+    #     self.post_process_after_hyperparam_optimize(model)
 
 
 
